@@ -31,10 +31,47 @@ run         = "nu --no-config-file scripts/setup-check.nu"
 depends     = ["format", "lint"]
 description = "Run all formatting and lint checks"
 
+[tasks.QA-ci]
+depends     = ["QA", "test"]
+description = "Run formatting, lint and the regular test suites"
+
+[tasks.QA-full]
+depends     = ["QA", "test-full"]
+description = "Run formatting, lint and all tests including heavy cases"
+
 [tasks.QA-fix]
 depends     = ["fix:*"]
 description = "Apply available fixes, then run all formatting and lint checks"
 run         = [{ task = "QA" }]
+
+# Tests ────────────────────────────────────────────────────────────────────────
+[tasks.test]
+depends     = ["test:testthat", "test:shinytest2", "test:tauri"]
+description = "Run Rhino unit tests, browser tests and Tauri tests in parallel"
+
+[tasks.test-full]
+description = "Run all test suites including heavy cases"
+env         = { SHINYTAURI_HEAVY_TESTS = "1" }
+run         = "mise run test"
+
+[tasks."test:testthat"]
+description = "Run Rhino unit tests with testthat"
+dir         = "rhino"
+run         = """rig run -e 'rhino::test_r(filter = "^shinytest2", invert = TRUE)'"""
+
+[tasks."test:shinytest2"]
+description = "Run Rhino browser tests with shinytest2"
+dir         = "rhino"
+env         = { NOT_CRAN = "true" }
+run         = """rig run -e 'rhino::test_r(filter = "^shinytest2")'"""
+
+[tasks."test:tauri"]
+description = "Run Tauri tests in parallel with cargo-nextest"
+dir = "src-tauri"
+run = '''
+let ignored = if $env.SHINYTAURI_HEAVY_TESTS? == "1" { "all" } else { "default" }
+cargo nextest run --locked --run-ignored $ignored
+'''
 
 # Formatting and Linting ───────────────────────────────────────────────────────
 [tasks.format]

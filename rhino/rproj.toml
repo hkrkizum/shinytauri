@@ -15,3 +15,7 @@ shiny = "*"
 platforms     = ["x86_64-unknown-linux-gnu", "x86_64-w64-mingw32"]
 prefer-binary = true
 r-versions    = ["4.6.2"]
+
+[dependency-groups.dev]
+shinytest2 = "*"
+testthat   = "*"

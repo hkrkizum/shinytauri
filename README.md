@@ -45,3 +45,18 @@ WebView2 が未導入の PC にもオフラインでインストールできる�
 
 `mise run QA-fix` は Nix・R・Nushell の lint 違反のうち自動修正できるものを直し、Nix・TOML・R・Nushell を整形します。
 すべての修正が完了してから `QA` を実行し、違反が残っていれば失敗します。
+
+### テスト
+
+開発シェルにはブラウザーテスト用の Chromium が含まれます。`mise run setup:r` で testthat と shinytest2 を含む開発用パッケージを復元してください。
+
+| コマンド | 実行内容 |
+| --- | --- |
+| `mise run test` | Rhino の単体テスト、shinytest2 のブラウザーテスト、Tauri の nextest を並列実行 |
+| `mise run test-full` | 同じ3系統で重いテストも実行 |
+| `mise run QA-ci` | `QA` と `test` |
+| `mise run QA-full` | `QA` と `test-full` |
+
+通常のブラウザーテストはカウンターを操作します。重いテストでは10万回のサイコロ集計を起動し、実行中の応答と完了後の結果を確認します。`test-full` は `SHINYTAURI_HEAVY_TESTS=1` を設定して `test` を呼び出します。個別に試す場合は、たとえば `env SHINYTAURI_HEAVY_TESTS=1 mise run test:shinytest2` を実行します。
+
+R のテストは `rhino/tests/testthat/` に置きます。`test-shinytest2*.R` を `test:shinytest2`、それ以外を `test:testthat` が実行します。重いケースには `testthat::skip_if_not(Sys.getenv("SHINYTAURI_HEAVY_TESTS") == "1")` を付けます。Rust では重いテストに `#[ignore]` を付けると、同じ環境変数で `test:tauri` が実行対象に加えます。

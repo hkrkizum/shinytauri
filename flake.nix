@@ -55,6 +55,11 @@
           taplo
           air-formatter
           jarl
+          # rig's R adds host libraries to LD_LIBRARY_PATH. Chromium needs Nix's GLib.
+          (writeShellScriptBin "chromium" ''
+            unset LD_LIBRARY_PATH
+            exec ${lib.getExe chromium} "$@"
+          '')
 
           # direnv (参考: direnv 本体はホスト側でも有効化が必要)
           direnv
