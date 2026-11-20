@@ -11,27 +11,8 @@ run = [
 
 [tasks."setup:check"]
 description = "Verify the local Git settings and the pre-commit hook"
-hide = true
-run = '''
-def check-setting [key: string, expected: string] {
-  let local_value = (try { ^git config --local --get $key } catch { "<unset>" })
-  let effective_value = (try { ^git config --get $key } catch { "<unset>" })
-  if $local_value != $expected or $effective_value != $expected {
-    print --stderr $"FAIL  ($key) expected ($expected), local ($local_value), effective ($effective_value)"
-    exit 1
-  }
-  print $"OK  ($key) = ($effective_value)"
-}
-
-check-setting core.hooksPath ".githooks"
-check-setting merge.ff "false"
-let hook = (^git rev-parse --git-path hooks/pre-commit)
-if ($hook | path expand | path type) != "file" or (^test -x $hook | complete).exit_code != 0 {
-  print --stderr $"FAIL  Expected an executable pre-commit hook at ($hook)"
-  exit 1
-}
-print $"OK  ($hook) is executable"
-'''
+hide        = true
+run         = "nu --no-config-file scripts/setup-check.nu"
 
 [tasks.QA]
 depends     = ["format", "lint"]
@@ -45,6 +26,11 @@ run         = [{ task = "QA" }]
 [tasks.format]
 depends     = ["fmt:*"]
 description = "Check formatting across all languages"
+
+[tasks."fmt:nu"]
+description = "Check Nushell formatting with nufmt"
+hide        = true
+run         = "fd --hidden --exclude .git --type f --extension nu --exec-batch nufmt --dry-run"
 
 [tasks."fmt:nix"]
 description = "Check Nix formatting with nixfmt"
@@ -66,6 +52,11 @@ run         = "air format --check ."
 depends     = ["lint:*"]
 description = "Run linters across all languages"
 
+[tasks."lint:nu"]
+description = "Lint Nushell scripts with nu-lint"
+hide        = true
+run         = "fd --hidden --exclude .git --type f --extension nu --exec-batch nu-lint check"
+
 [tasks."lint:nix"]
 description = "Lint Nix files with statix"
 hide        = true
@@ -81,6 +72,14 @@ run         = "taplo lint"
 description = "Lint R files with Jarl"
 hide        = true
 run         = "jarl check ."
+
+[tasks."fix:nu"]
+description = "Apply nu-lint fixes and format Nushell scripts with nufmt"
+hide = true
+run = [
+  "fd --hidden --exclude .git --type f --extension nu --exec-batch nu-lint fix",
+  "fd --hidden --exclude .git --type f --extension nu --exec-batch nufmt",
+]
 
 [tasks."fix:nix"]
 description = "Apply statix fixes and format Nix files with nixfmt"

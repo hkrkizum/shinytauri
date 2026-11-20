@@ -46,6 +46,8 @@
 
           # Development shell, task runner and QA
           nushell
+          nufmt
+          nu-lint
           mise
           git
           fd
