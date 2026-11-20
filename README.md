@@ -1,0 +1,2 @@
+# shinytauri
+R shinyをtauriでwrapしWindows環境でスタンドアロンアプリとして配布できるようにする
