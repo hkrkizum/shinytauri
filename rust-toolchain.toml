@@ -1,4 +1,4 @@
 [toolchain]
-channel = "1.100.0"
-profile = "default"
+channel    = "1.100.0"
 components = ["llvm-tools", "llvm-tools-preview"]
+profile    = "default"

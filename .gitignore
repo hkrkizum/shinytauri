@@ -4,3 +4,8 @@
 # in .rvenvlib instead.
 /.rvenv/
 # rig rvenv end
+
+/.codex/
+/.direnv/
+node_modules/
+target/

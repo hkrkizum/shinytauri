@@ -1,0 +1,4 @@
+[format]
+exclude      = [".rvenv/", ".rvenvlib/", "node_modules/", "target/"]
+indent-width = 2
+line-width   = 80

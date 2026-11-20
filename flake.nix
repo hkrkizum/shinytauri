@@ -44,6 +44,15 @@
           nixd # Nix LSP
           nixfmt # Nix フォーマッタ
 
+          # Task runner and QA
+          mise
+          git
+          fd
+          statix
+          taplo
+          air-formatter
+          jarl
+
           # direnv (参考: direnv 本体はホスト側でも有効化が必要)
           direnv
           nix-direnv
@@ -105,6 +114,7 @@
                 row Web   'Node.js ${pkgs.nodejs.version} · pnpm ${pkgs.pnpm.version}'
                 row Build 'clang · gcc · mold · make · pkg-config'
                 row Nix   'nixd · nixfmt · direnv · nix-direnv'
+                row QA    'mise run QA · statix · taplo · air · jarl'
                 printf '\n'
               )
             '';

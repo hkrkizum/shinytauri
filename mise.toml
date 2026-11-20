@@ -1,0 +1,74 @@
+[tasks.setup]
+description = "Enable Git hooks and merge commits for this repository"
+run = [
+  "git config --local core.hooksPath .githooks",
+  "git config --local merge.ff false",
+]
+
+[tasks.QA]
+depends     = ["format", "lint"]
+description = "Run all formatting and lint checks"
+
+[tasks.QA-fix]
+depends     = ["fix:*"]
+description = "Apply available fixes, then run all formatting and lint checks"
+run         = [{ task = "QA" }]
+
+[tasks.format]
+depends     = ["fmt:*"]
+description = "Check formatting across all languages"
+
+[tasks."fmt:nix"]
+description = "Check Nix formatting with nixfmt"
+hide        = true
+run         = "fd --hidden --exclude .git --type f --extension nix --exec-batch nixfmt --check"
+
+[tasks."fmt:toml"]
+description = "Check TOML formatting with Taplo"
+hide        = true
+run         = "taplo fmt --check"
+
+[tasks."fmt:r"]
+description = "Check R formatting with Air"
+hide        = true
+run         = "air format --check ."
+
+[tasks.lint]
+depends     = ["lint:*"]
+description = "Run linters across all languages"
+
+[tasks."lint:nix"]
+description = "Lint Nix files with statix"
+hide        = true
+run         = "statix check ."
+
+[tasks."lint:toml"]
+description = "Lint TOML files with Taplo"
+hide        = true
+run         = "taplo lint"
+
+[tasks."lint:r"]
+description = "Lint R files with Jarl"
+hide        = true
+run         = "jarl check ."
+
+[tasks."fix:nix"]
+description = "Apply statix fixes and format Nix files with nixfmt"
+hide = true
+run = [
+  "statix fix .",
+  "fd --hidden --exclude .git --type f --extension nix --exec-batch nixfmt",
+]
+
+[tasks."fix:toml"]
+description = "Format TOML files with Taplo"
+hide        = true
+run         = "taplo fmt"
+
+[tasks."fix:r"]
+description = "Apply safe Jarl fixes and format R files with Air"
+hide = true
+run = [
+  "jarl check --fix-only --allow-dirty .",
+  "air format .",
+]
