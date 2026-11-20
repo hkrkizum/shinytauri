@@ -1,0 +1,13 @@
+[package]
+description  = "Desktop host for the shinytauri Rhino application"
+edition      = "2024"
+license      = "MIT"
+name         = "shinytauri"
+rust-version = "1.100"
+version      = "0.1.0"
+
+[build-dependencies]
+tauri-build = { features = [], version = "2.7.6" }
+
+[dependencies]
+tauri = { features = [], version = "2.12.7" }
