@@ -1,19 +1,32 @@
+# Settings ─────────────────────────────────────────────────────────────────────
+[env]
+RIG_MODE = "user"
+
 [task_config]
 shell = "nu --no-config-file -c"
 
+# Setup Tasks ──────────────────────────────────────────────────────────────────
 [tasks.setup]
-description = "Enable Git hooks and merge commits for this repository"
+description = "Configure Git and restore the project's R environment"
 run = [
   "git config --local core.hooksPath .githooks",
   "git config --local merge.ff false",
+  { task = "setup:r" },
   { task = "setup:check" },
 ]
+
+[tasks."setup:r"]
+description = "Install the locked R version and restore the Rhino project library"
+dir         = "rhino"
+hide        = true
+run         = "rig proj sync --locked"
 
 [tasks."setup:check"]
 description = "Verify the local Git settings and the pre-commit hook"
 hide        = true
 run         = "nu --no-config-file scripts/setup-check.nu"
 
+# Quality Assurance ────────────────────────────────────────────────────────────
 [tasks.QA]
 depends     = ["format", "lint"]
 description = "Run all formatting and lint checks"
@@ -23,6 +36,7 @@ depends     = ["fix:*"]
 description = "Apply available fixes, then run all formatting and lint checks"
 run         = [{ task = "QA" }]
 
+# Formatting and Linting ───────────────────────────────────────────────────────
 [tasks.format]
 depends     = ["fmt:*"]
 description = "Check formatting across all languages"
@@ -97,8 +111,10 @@ run         = "taplo fmt"
 
 [tasks."fix:r"]
 description = "Apply safe Jarl fixes and format R files with Air"
-hide = true
-run = [
-  "jarl check --fix-only --allow-dirty .",
-  "air format .",
-]
+hide        = true
+run         = ["jarl check --fix-only --allow-dirty .", "air format ."]
+
+# Run  ───────────────────────────────────────────────────────
+[tasks."run:tauri"]
+description = "Run the Tauri application"
+run         = "cargo tauri dev"

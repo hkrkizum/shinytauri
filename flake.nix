@@ -67,6 +67,10 @@
           mold
           gnumake
 
+          # Tauri's Linux WebView and native menu
+          webkitgtk_4_1
+          xdotool
+
           # Rust tools
           cargo-nextest
           cargo-make
@@ -84,6 +88,7 @@
         in
         {
           default = pkgs.mkShell {
+            env.RIG_MODE = "user";
             packages = [
               rustToolchain
               rig
@@ -92,7 +97,10 @@
             ++ fontPackagesFor pkgs;
             shellHook = ''
               export CODEX_HOME="$PWD/.codex"
-              export PATH="$PWD/.rvenv/bin:$PATH:$HOME/.local/bin"
+              export PATH="$PWD/rhino/.rvenv/bin:$PATH:$HOME/.local/bin"
+              # rig's R needs its own libR.so. Adding the host libc directory
+              # to LD_LIBRARY_PATH would also load it into Nix subprocesses.
+              export R_LD_LIBRARY_PATH='$ORIGIN/../../lib'
               export CC=clang
               export CXX=clang++
               export FONTCONFIG_FILE="${pkgs.makeFontsConf { fontDirectories = fontPackagesFor pkgs; }}"

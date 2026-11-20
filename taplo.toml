@@ -9,8 +9,20 @@ exclude = [
 ]
 
 [formatting]
-align_entries       = true  # エントリを垂直に整列
-allowed_blank_lines = 2     # 許可される連続空白行の最大数
-array_auto_collapse = false # 配列が1行に収まる場合でも自動的に縮小しない
-indent_string       = "  "  # インデントに使用する文字列（スペース4つ）
-reorder_keys        = true  # キーをアルファベット順に並び替え
+align_comments        = true
+align_entries         = true  # エントリを垂直に整列
+allowed_blank_lines   = 2     # 許可される連続空白行の最大数
+array_auto_collapse   = false # 配列が1行に収まる場合でも自動的に縮小しない
+array_trailing_comma  = true
+column_width          = 80
+indent_string         = "  "  # スペース2つでインデント
+reorder_arrays        = true
+reorder_inline_tables = true
+reorder_keys          = true  # キーをアルファベット順に並び替え
+
+# mise は run 配列の記述順にコマンドを実行する。
+[[rule]]
+include = ["mise.toml"]
+
+[rule.formatting]
+reorder_arrays = false
