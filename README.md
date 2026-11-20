@@ -15,6 +15,8 @@ cargo tauri dev
 
 Shiny は起動時に mirai のローカルデーモンを4つ立ち上げます。全セッションでこの4つを共有し、アプリの終了時にまとめて停止します。時間のかかる計算は、サーバーモジュールの `shiny::ExtendedTask` から `mirai::mirai()` に渡せます。[mirai の Shiny 統合ガイド](https://mirai.r-lib.org/articles/shiny.html)
 
+デモの「サイコロを振る」は、選んだ回数だけ2個のサイコロを振り、出目の合計の実測値を理論値と比較します。計算中に「1 を足す」を試せるよう、デーモン内に2秒の待ち時間を設けています。モジュールの実装は `rhino/app/view/dice.R` にあります。
+
 ## ソースと依存関係
 
 - `src-tauri/` に Rust のエントリーポイントと Tauri 設定を置きます。
