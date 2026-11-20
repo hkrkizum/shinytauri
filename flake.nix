@@ -44,7 +44,8 @@
           nixd # Nix LSP
           nixfmt # Nix フォーマッタ
 
-          # Task runner and QA
+          # Development shell, task runner and QA
+          nushell
           mise
           git
           fd
@@ -94,8 +95,7 @@
               export CXX=clang++
               export FONTCONFIG_FILE="${pkgs.makeFontsConf { fontDirectories = fontPackagesFor pkgs; }}"
 
-              (
-                [[ $- == *i* && -t 1 ]] || exit 0
+              if [[ $- == *i* && -t 0 && -t 1 ]]; then
                 accent= reset=
                 if [[ -z ''${NO_COLOR:-} && ''${TERM:-dumb} != dumb ]]; then
                   accent=$'\033[1;36m'
@@ -116,7 +116,9 @@
                 row Nix   'nixd · nixfmt · direnv · nix-direnv'
                 row QA    'mise run QA · statix · taplo · air · jarl'
                 printf '\n'
-              )
+
+                exec "${pkgs.lib.getExe pkgs.nushell}" --execute '$env.SHELL = $nu.current-exe'
+              fi
             '';
           };
         }

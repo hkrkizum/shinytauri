@@ -1,9 +1,37 @@
+[task_config]
+shell = "nu --no-config-file -c"
+
 [tasks.setup]
 description = "Enable Git hooks and merge commits for this repository"
 run = [
   "git config --local core.hooksPath .githooks",
   "git config --local merge.ff false",
+  { task = "setup:check" },
 ]
+
+[tasks."setup:check"]
+description = "Verify the local Git settings and the pre-commit hook"
+hide = true
+run = '''
+def check-setting [key: string, expected: string] {
+  let local_value = (try { ^git config --local --get $key } catch { "<unset>" })
+  let effective_value = (try { ^git config --get $key } catch { "<unset>" })
+  if $local_value != $expected or $effective_value != $expected {
+    print --stderr $"FAIL  ($key) expected ($expected), local ($local_value), effective ($effective_value)"
+    exit 1
+  }
+  print $"OK  ($key) = ($effective_value)"
+}
+
+check-setting core.hooksPath ".githooks"
+check-setting merge.ff "false"
+let hook = (^git rev-parse --git-path hooks/pre-commit)
+if ($hook | path expand | path type) != "file" or (^test -x $hook | complete).exit_code != 0 {
+  print --stderr $"FAIL  Expected an executable pre-commit hook at ($hook)"
+  exit 1
+}
+print $"OK  ($hook) is executable"
+'''
 
 [tasks.QA]
 depends     = ["format", "lint"]
@@ -25,6 +53,7 @@ run         = "fd --hidden --exclude .git --type f --extension nix --exec-batch 
 
 [tasks."fmt:toml"]
 description = "Check TOML formatting with Taplo"
+env         = { RUST_LOG = "WARN" }
 hide        = true
 run         = "taplo fmt --check"
 
@@ -44,6 +73,7 @@ run         = "statix check ."
 
 [tasks."lint:toml"]
 description = "Lint TOML files with Taplo"
+env         = { RUST_LOG = "WARN" }
 hide        = true
 run         = "taplo lint"
 
@@ -62,6 +92,7 @@ run = [
 
 [tasks."fix:toml"]
 description = "Format TOML files with Taplo"
+env         = { RUST_LOG = "WARN" }
 hide        = true
 run         = "taplo fmt"
 
