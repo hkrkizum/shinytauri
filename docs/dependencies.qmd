@@ -1,0 +1,71 @@
+---
+title: "アプリの依存パッケージ"
+---
+
+インストーラーに入れるのは Windows x64 用の R と R パッケージである。Linux で開発したアプリでも、開発用ライブラリをコピーせず、ビルド機で Windows 用のパッケージを確定して配布できる。アプリ自体を rig プロジェクトに移行する必要はない。
+
+## プロジェクトに合う方法を選ぶ
+
+`init` はアプリ直下の rig 設定を優先し、次に `renv.lock`、`DESCRIPTION` の順で確認する。既存の rig 設定に `--package` は併用できない。
+
+| アプリにあるもの | 初期設定後の手順 |
+| --- | --- |
+| Windows x64 に対応した rig の `rproj.lock` | アプリ直下のロックを再利用する。`shinytauri build .` を実行する。 |
+| rig の `rproj.toml` だけ | Windows ターゲットを設定し、同じディレクトリで `rig proj lock` を実行してからビルドする。 |
+| `renv.lock` | `shinytauri init` がロックを依存定義として指定する。`shinytauri lock .` で Windows 用ロックを作る。 |
+| `DESCRIPTION` | `Depends`、`Imports`、`LinkingTo` の宣言から Windows 用ロックを作る。 |
+| いずれもない | `init --package` でパッケージ名を指定する。Shiny とその依存だけで足りる場合は `--package` を省略できる。 |
+
+## Linux から rig を使っていないアプリを配布する
+
+次は、Linux の `sales-dashboard/` にあるアプリが CRAN パッケージ `DT` を使い、`renv.lock` も `DESCRIPTION` もない場合の例である。[Linux のビルド環境](installation.qmd)を用意し、次のコマンドを実行する。
+
+```sh
+cd sales-dashboard
+shinytauri init . --id jp.example.sales-dashboard --package DT
+shinytauri lock .
+shinytauri build .
+```
+
+`init` は `shinytauri.toml` に明示したパッケージを記録する。`--package` は繰り返し指定できる。`--package glue=1.8.0` のようにバージョンを固定することもできる。Shiny は実行時に必要なパッケージとして含まれる。
+
+`lock` は独立した作業場所で依存を解決し、`.shinytauri/windows.lock` を作る。`build` はそのロックに記録された Windows バイナリを使う。`shinytauri.toml` と `.shinytauri/windows.lock` はアプリのソースと一緒にバージョン管理する。依存定義を変更したら、再度 `shinytauri lock .` を実行したうえでビルドする。
+
+## renv と DESCRIPTION
+
+CRAN パッケージを使う `renv.lock` がある場合も、アプリのディレクトリで実行する。
+
+```sh
+shinytauri init . --id jp.example.sales-dashboard
+shinytauri lock .
+shinytauri build .
+```
+
+`init` はアプリ直下の `renv.lock` を検出する。`renv.lock` と `DESCRIPTION` が両方ある場合は `renv.lock` を使う。この方式には R 4.6.2 のロックと `shiny` のレコードが必要である。CLI は各パッケージの名前とバージョンを読み、元のロックと同じバージョンの Windows バイナリを解決する。
+
+CLI は `R.Repositories` に記録された URL をすべて確認する。対応するのは `https://cloud.r-project.org` などの所定の CRAN URL と、`https://packagemanager.posit.co/cran/latest` などの所定の公開 Posit Package Manager URL である。各パッケージの `Source` は `Repository` である必要がある。対応 URL を記録した Linux のスナップショットは、パッケージの `Repository` が `RSPM` や `PPM` でも使える。
+
+公開ミラーでも、CLI が認識しない URL ではロックの作成が止まる。すべてのパッケージが公開 CRAN 由来なら、作業用コピーで対応ミラーから同じバージョンを復元し、`renv::snapshot()` で依存定義を記録し直してから `shinytauri lock .` を再実行する。GitHub やローカル、私設リポジトリ由来のパッケージ、対応する Windows バイナリが取得できないバージョンは、この方法の対象外である。
+
+`DESCRIPTION` を使う場合もコマンドは同じである。`Suggests` にあるパッケージのうち実行時に必要なものは `--package` で明示する。`Remotes` や独自の取得先には対応していない。パッケージ名を文字列で組み立てるコードや、設定に応じて読み込むパッケージも、開発者が実際の名前を指定する。
+
+## Shiny だけのアプリ
+
+アプリに依存定義がなく、Shiny とその依存パッケージだけを使っている場合は次の 2 コマンドでビルドできる。
+
+```sh
+shinytauri init . --id jp.example.counter
+shinytauri build .
+```
+
+この場合、CLI は `.shinytauri/rproj.toml` と `.shinytauri/rproj.lock` に同梱の最小構成を展開する。この構成では、ビルド時に配布対象の R スクリプトを調べ、`library()` や `パッケージ名::関数名` などに現れる名前をロックと照合する。パッケージ名を動的に決めるコードや、実行する R Markdown・Quarto 文書を同梱する場合は、実際に必要なパッケージを明示する。たとえば、初期化した後で `DT` を追加する場合は `shinytauri.toml` の `checkMinimal` を削除し、`lock` を `".shinytauri/windows.lock"` に変更して `packages = ["DT"]` を加える。続いて `shinytauri lock .` を実行する。
+
+## 既存の rig ロック
+
+rig のアプリ用ロックを使う場合は、次の条件を満たす `rproj.lock` を指定する。
+
+- Windows x64 ターゲット `x86_64-w64-mingw32` と、CLI が配布できる R バージョン（現在は 4.6.2）がある。
+- `main` グループに `shiny` とアプリの実行時依存がある。
+- 実行用パッケージを、ロックに記録された HTTPS の Windows バイナリ ZIP から取得できる。
+
+既存の rig プロジェクトでパッケージを追加するときは、アプリ用の `rproj.toml` があるディレクトリで `rig proj add DT` のように実行する。マニフェストを手で編集した場合は `rig proj lock` でロックを更新する。ビルド機のツール用ロックと、配布するアプリ用ロックは用途が異なる。[rig プロジェクトガイド](https://rig.r-lib.org/proj-guide.html)

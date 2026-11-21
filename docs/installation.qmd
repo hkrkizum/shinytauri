@@ -1,0 +1,70 @@
+---
+title: "CLI とビルド環境の導入"
+---
+
+インストーラーを作るマシンに CLI とビルドツールを入れる。インストーラーを受け取る側に必要なのは Windows 10/11 x64 と Microsoft Edge WebView2 Runtime である。
+
+## CLI を入手する
+
+[GitHub Releases](https://github.com/hkrkizum/shinytauri/releases) の CLI リリースから、ビルド機の OS に合うアーカイブを選ぶ。
+
+| ビルド機 | アーカイブの形式 | 展開して使うファイル |
+| --- | --- | --- |
+| Linux x86_64 | `shinytauri-cli-x86_64-unknown-linux-gnu.tar.xz` | `shinytauri` |
+| Windows x64 | `shinytauri-cli-x86_64-pc-windows-msvc.zip` | `shinytauri.exe` |
+
+Linux では対応する `.sha256` も同じ場所に保存し、次のように検証して展開できる。
+
+```sh
+sha256sum -c shinytauri-cli-x86_64-unknown-linux-gnu.tar.xz.sha256
+tar -xf shinytauri-cli-x86_64-unknown-linux-gnu.tar.xz
+install -Dm755 shinytauri-cli-x86_64-unknown-linux-gnu/shinytauri ~/.local/bin/shinytauri
+```
+
+`~/.local/bin` に PATH が通っていることを確認する。Windows では ZIP を展開し、中にある `shinytauri.exe` を PATH の通ったディレクトリに置く。次のコマンドでバージョンと利用できるコマンドを確認できる。
+
+```sh
+shinytauri --version
+shinytauri --help
+```
+
+ソースから導入する場合は Rust のツールチェーンと Git を用意し、リポジトリのルートでインストールする。
+
+```sh
+git clone https://github.com/hkrkizum/shinytauri.git
+cd shinytauri
+cargo install --locked --path cli
+```
+
+Cargo のインストール先を PATH に加える。リポジトリで作業するのは CLI を導入するときだけでよい。アプリをビルドするときはアプリのディレクトリで CLI を実行する。
+
+## Linux から Windows 向けにビルドする
+
+x86_64 Linux に Git と [Nix](https://nix.dev/install-nix) を用意する。Nix の設定で `nix-command` と `flakes` を有効にする。たとえばユーザーの `~/.config/nix/nix.conf` に次の行を追加する。
+
+```ini
+extra-experimental-features = nix-command flakes
+```
+
+`shinytauri build` は同梱の Nix flake から Windows 向けのビルド環境を起動する。この環境には Rust の Windows ターゲット、MinGW-w64、NSIS、rig、Tauri CLI がある。初回はビルドツールや R 配布物を取得するため時間がかかる。
+
+Linux で普段使っている R とパッケージは、Windows のインストーラーには入らない。アプリが rig を使っていない場合も[Windows 用の依存パッケージを確定する](dependencies.qmd)。
+
+## Windows でビルドする
+
+x64 の Windows に次のツールを用意する。
+
+- [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) の「C++ によるデスクトップ開発」と Windows SDK
+- [rustup](https://rustup.rs/) と x64 MSVC ツールチェーン
+- [rig 0.11.1](https://github.com/r-lib/rig/releases/tag/v0.11.1)
+- Tauri CLI 2.12.6
+
+Tauri CLI は PowerShell から次のコマンドで導入できる。
+
+```powershell
+cargo install tauri-cli --version 2.12.6 --locked
+cargo tauri --version
+rig --version
+```
+
+CLI はビルド用の一時ディレクトリに Tauri ホストを展開し、そこでビルド用の R 環境を復元する。通常の CLI ビルドにデモアプリのセットアップは不要である。
