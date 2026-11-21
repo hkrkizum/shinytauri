@@ -29,6 +29,8 @@ shinytauri build .
 
 `DT` などを使う場合は `--package` で依存を宣言する。`renv.lock` や `DESCRIPTION` を使っている場合は、それらをもとに `shinytauri lock .` で Windows 用ロックを作成できる。既存の rig プロジェクトは Windows 用の `rproj.lock` を再利用できる。[アプリの依存パッケージ](docs/dependencies.qmd)
 
+依存定義のないアプリで配布用 R を固定するには、初期化時に `--r-version 4.5.3` を指定し、`shinytauri lock .` と `shinytauri build .` を実行する。既存の `renv.lock` や rig の Windows 用ロックが R を指定している場合は、そのバージョンを使える。[同梱する R の選び方](docs/dependencies.qmd)
+
 動くアプリのコードから試すには[はじめてのビルド](docs/index.qmd)、同梱するファイルや製品名を変えるには[配布設定のリファレンス](docs/configuration.qmd)を参照する。
 
 ## ライセンス

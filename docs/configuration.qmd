@@ -34,6 +34,7 @@ quarto = false
 | `dependencyFile` | `lock` コマンドが読む `renv.lock` または `DESCRIPTION`。設定ファイルからの相対パス。 |
 | `packages` | 追加する CRAN パッケージの配列。例は `["DT", "glue=1.8.0"]`。 |
 | `checkMinimal` | 最小ロックでビルドするときに `init` が設定する。明示的な依存定義への切り替えは[依存パッケージの手順](dependencies.qmd)を参照する。 |
+| `rVersion` | インストーラーに同梱する R の完全なバージョン。例は `"4.5.3"`。[入力別の選択規則](dependencies.qmd#r-version) |
 | `productName` | インストーラーに表示する製品名。Windows で使用できるファイル名を選ぶ。 |
 | `identifier` | アプリを識別する値。初期化時は `--id jp.example.counter` のように組織と製品に固有の値を渡す。 |
 | `version` | 製品のバージョン。`1.2.3` のように整数を3個並べ、ピリオドで区切る。 |

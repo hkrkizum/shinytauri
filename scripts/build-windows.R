@@ -33,19 +33,80 @@ unpack <- function(archive, dest, prefix) {
   )
 }
 
+validate_r_version <- function(version) {
+  component <- "(0|[1-9][0-9]*)"
+  pattern <- paste0("\\A", component, "([.]", component, "){2}\\z")
+  if (
+    !is.character(version) ||
+      length(version) != 1L ||
+      is.na(version) ||
+      !grepl(pattern, version, perl = TRUE)
+  ) {
+    stop("Expected an exact R version in major.minor.patch form")
+  }
+  version
+}
+
+portable_r_url <- function(version) {
+  version <- validate_r_version(version)
+  sprintf(
+    "https://github.com/portable-r/portable-r-windows/releases/download/v%s/portable-r-%s-win-x64.zip",
+    version,
+    version
+  )
+}
+
+valid_sha256 <- function(value) {
+  is.character(value) &&
+    length(value) == 1L &&
+    !is.na(value) &&
+    grepl("\\A[0-9a-fA-F]{64}\\z", value, perl = TRUE)
+}
+
+portable_r_digest <- function(version) {
+  url <- portable_r_url(version)
+  if (version %in% names(runtime_sha256)) {
+    return(unname(runtime_sha256[[version]]))
+  }
+  file <- tempfile()
+  on.exit(unlink(file))
+  tryCatch(download_zip(paste0(url, ".sha256"), file), error = function(e) {
+    stop(
+      "Cannot obtain official portable R ",
+      version,
+      " x64 checksum: ",
+      conditionMessage(e),
+      call. = FALSE
+    )
+  })
+  # Accept exactly one sha256sum record for this filename (LF or CRLF).
+  # Validate its bytes before converting to text, including embedded NULs.
+  name <- basename(url)
+  max_size <- 66L + nchar(name) + 2L
+  bytes <- readBin(file, "raw", n = max_size + 1L)
+  if (length(bytes) > max_size || any(as.integer(bytes) %in% c(0L, 128:255))) {
+    stop("Invalid official portable R checksum for ", name)
+  }
+  line <- sub("\\r?\\n\\z", "", rawToChar(bytes), perl = TRUE)
+  digest <- substr(line, 1L, 64L)
+  if (
+    !valid_sha256(digest) ||
+      !substr(line, 65L, 66L) %in% c("  ", " *") ||
+      !identical(substring(line, 67L), name)
+  ) {
+    stop("Invalid official portable R checksum for ", name)
+  }
+  tolower(digest)
+}
+
 stage_runtime <- function(target, stage, payload) {
   version <- target$r_version
-  runtime <- paste0("portable-r-", version, "-win-x64")
+  url <- portable_r_url(version)
+  runtime <- tools::file_path_sans_ext(basename(url))
+  digest <- target$runtime_sha256 %||% portable_r_digest(version)
   archive <- file.path(stage, "R.zip")
-  download_zip(
-    sprintf(
-      "https://github.com/portable-r/portable-r-windows/releases/download/v%s/%s.zip",
-      version,
-      runtime
-    ),
-    archive
-  )
-  if (tools::sha256sum(archive) != runtime_sha256[[version]]) {
+  download_zip(url, archive)
+  if (tools::sha256sum(archive) != digest) {
     stop("SHA-256 mismatch for ", runtime)
   }
   unpack(archive, payload, runtime)
@@ -104,7 +165,13 @@ stage_packages <- function(target, stage, payload) {
 read_bundle <- function(path, for_lock = FALSE) {
   spec <- RcppTOML::parseTOML(path)
   base <- dirname(absolute_path(path))
-  spec$managed <- !is.null(spec$dependencyFile) || !is.null(spec$packages)
+  if (!is.null(spec$rVersion)) {
+    validate_r_version(spec$rVersion)
+  }
+  spec$managed <- !is.null(spec$dependencyFile) ||
+    !is.null(spec$packages) ||
+    (!is.null(spec$rVersion) &&
+      identical(spec$lock, ".shinytauri/windows.lock"))
   if (spec$managed && !identical(spec$lock, ".shinytauri/windows.lock")) {
     stop("For managed dependencies set lock = \".shinytauri/windows.lock\".")
   }
@@ -213,20 +280,59 @@ read_bundle <- function(path, for_lock = FALSE) {
   spec
 }
 
-windows_target <- function(path) {
+windows_target <- function(path, r_version = NULL) {
   lock <- RcppTOML::parseTOML(path)
   targets <- Filter(function(t) identical(t$platform, platform), lock$targets)
+  if (!is.null(r_version)) {
+    validate_r_version(r_version)
+    targets <- Filter(function(t) identical(t$r_version, r_version), targets)
+  }
   if (length(targets) != 1L) {
-    stop("Expected one Windows x64 target in ", path)
+    hint <- if (
+      identical(basename(dirname(path)), ".shinytauri") &&
+        identical(basename(path), "rproj.lock")
+    ) {
+      ' To change the bundled minimum, set lock = ".shinytauri/windows.lock" and run shinytauri lock.'
+    } else if (is.null(r_version) && length(targets) > 1L) {
+      paste0(
+        " Set rVersion to one of: ",
+        paste(
+          unique(vapply(targets, function(t) t$r_version, "")),
+          collapse = ", "
+        ),
+        "."
+      )
+    }
+    stop(
+      "Expected one Windows x64 target",
+      if (!is.null(r_version)) paste0(" for R ", r_version),
+      " in ",
+      path,
+      ".",
+      hint
+    )
   }
   target <- targets[[1L]]
+  version <- validate_r_version(target$r_version)
+  pin <- lock$shinytauri$runtime_sha256
+  if (!is.null(pin)) {
+    if (!valid_sha256(pin)) {
+      stop("Invalid portable R SHA-256 in ", path)
+    }
+    pin <- tolower(pin)
+  }
+  if (version %in% names(runtime_sha256)) {
+    trusted <- unname(runtime_sha256[[version]])
+    if (!is.null(pin) && !identical(pin, trusted)) {
+      stop("Lock disagrees with built-in SHA-256 for R ", version)
+    }
+    pin <- trusted
+  }
+  target$runtime_sha256 <- pin
   target$packages <- Filter(function(p) "main" %in% p$groups, target$packages)
   packages <- vapply(target$packages, function(p) p$package, character(1))
   if (!"shiny" %in% packages) {
     stop("Missing Shiny runtime dependency in ", path)
-  }
-  if (!target$r_version %in% names(runtime_sha256)) {
-    stop("Register the published portable R SHA-256 for R ", target$r_version)
   }
   target$urls <- vapply(
     target$packages,
@@ -241,6 +347,15 @@ windows_target <- function(path) {
           !endsWith(url, ".zip")
       ) {
         stop("No locked Windows binary for ", p$package)
+      }
+      # Standard CRAN binary URLs identify the R major.minor ABI.
+      abi <- sub("[.][0-9]+$", "", version)
+      path <- sub("[?#].*$", "", url)
+      contrib <- strsplit(path, "/bin/windows/contrib/", fixed = TRUE)[[1L]]
+      if (
+        length(contrib) > 1L && !startsWith(contrib[[2L]], paste0(abi, "/"))
+      ) {
+        stop("Windows binary for ", p$package, " does not target R ", abi)
       }
       url
     },
@@ -423,7 +538,7 @@ build_windows <- function(profile, output = NULL, engine = getwd()) {
   if (spec$managed || isTRUE(spec$checkMinimal)) {
     source(file.path(engine, "scripts/runtime-deps.R"), local = TRUE)
   }
-  target <- windows_target(spec$lock)
+  target <- windows_target(spec$lock, if (!spec$managed) spec$rVersion)
   if (spec$managed) {
     verify_runtime_lock(spec, target)
   }

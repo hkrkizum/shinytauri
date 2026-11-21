@@ -1,5 +1,27 @@
 # Resolve only redistribution dependencies. The user's R library is never used.
-runtime_version <- function() names(runtime_sha256)[[1L]]
+default_runtime_version <- "4.6.2"
+
+runtime_version <- function(spec, requirements = runtime_requirements(spec)) {
+  r <- requirements[requirements$name == "R", ]
+  configured <- spec$rVersion
+  if (!is.null(configured)) {
+    validate_r_version(configured)
+  }
+  pins <- unique(c(configured, r$version[r$op == "=="]))
+  if (length(pins) > 1L) {
+    stop(
+      "Conflicting exact R versions in the runtime configuration: ",
+      paste(pins, collapse = ", ")
+    )
+  }
+  version <- if (length(pins)) {
+    validate_r_version(pins[[1L]])
+  } else {
+    default_runtime_version
+  }
+  check_version_requirements(r, c(R = version))
+  version
+}
 
 package_pattern <- "[A-Za-z][A-Za-z0-9.]*"
 version_pattern <- "[0-9]+([.-][0-9]+)*"
@@ -27,14 +49,7 @@ description_requirements <- function(path) {
 
 renv_requirements <- function(path) {
   lock <- jsonlite::read_json(path, simplifyVector = FALSE)
-  if (!identical(lock$R$Version, runtime_version())) {
-    stop(
-      "renv.lock requires R ",
-      lock$R$Version,
-      "; supported portable R: ",
-      runtime_version()
-    )
-  }
+  version <- validate_r_version(lock$R$Version)
   public_url <- paste0(
     "^https://(cloud[.]r-project[.]org|cran[.]r-project[.]org|cran[.]rstudio[.]com)/?$|",
     "^https://(packagemanager[.]posit[.]co|p3m[.]dev)/cran/(__linux__/[a-z0-9_-]+/)?(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})/?$"
@@ -64,7 +79,7 @@ renv_requirements <- function(path) {
   ) {
     stop("renv.lock must contain named, unique Packages including shiny.")
   }
-  vapply(
+  packages <- vapply(
     names(records),
     function(name) {
       pkg <- records[[name]]
@@ -95,6 +110,7 @@ renv_requirements <- function(path) {
     character(1),
     USE.NAMES = FALSE
   )
+  c(sprintf("R (== %s)", version), packages)
 }
 
 runtime_requirements <- function(spec) {
@@ -149,6 +165,10 @@ check_resolved_versions <- function(requirements, target) {
   versions <- vapply(target$packages, function(p) p$version, "")
   names(versions) <- vapply(target$packages, function(p) p$package, "")
   versions[base_packages()] <- target$r_version
+  check_version_requirements(requirements, versions)
+}
+
+check_version_requirements <- function(requirements, versions) {
   for (i in seq_len(nrow(requirements))) {
     req <- requirements[i, ]
     version <- unname(versions[req$name])
@@ -180,7 +200,7 @@ check_resolved_versions <- function(requirements, target) {
   }
 }
 
-runtime_fingerprint <- function(spec) {
+runtime_fingerprint <- function(spec, version = runtime_version(spec)) {
   input <- spec$dependencyFile
   temp <- tempfile()
   on.exit(unlink(temp))
@@ -194,7 +214,7 @@ runtime_fingerprint <- function(spec) {
   }
   lines <- c(
     "windows-cran-v1",
-    runtime_version(),
+    version,
     source,
     sort(unique(spec$packages %||% character()), method = "radix")
   )
@@ -204,10 +224,31 @@ runtime_fingerprint <- function(spec) {
 
 verify_runtime_lock <- function(spec, target = windows_target(spec$lock)) {
   lock <- RcppTOML::parseTOML(spec$lock)
-  if (!identical(lock$shinytauri$input_sha256, runtime_fingerprint(spec))) {
+  requirements <- runtime_requirements(spec)
+  version <- runtime_version(spec, requirements)
+  if (!identical(target$r_version, version)) {
+    stop(
+      "Windows lock targets R ",
+      target$r_version,
+      " but the app requires R ",
+      version,
+      "; run shinytauri lock again."
+    )
+  }
+  if (
+    is.null(lock$shinytauri$runtime_sha256) &&
+      version != default_runtime_version
+  ) {
+    stop(
+      "Missing portable R SHA-256 in the managed Windows lock; run shinytauri lock again."
+    )
+  }
+  if (
+    !identical(lock$shinytauri$input_sha256, runtime_fingerprint(spec, version))
+  ) {
     stop("Windows dependencies have changed; run shinytauri lock again.")
   }
-  check_resolved_versions(runtime_requirements(spec), target)
+  check_resolved_versions(requirements, target)
 }
 
 lock_windows <- function(spec) {
@@ -216,8 +257,10 @@ lock_windows <- function(spec) {
       "This config uses an existing rig lock. For CLI-managed dependencies set packages or dependencyFile and lock = '.shinytauri/windows.lock'."
     )
   }
-  fingerprint <- runtime_fingerprint(spec)
   req <- runtime_requirements(spec)
+  version <- runtime_version(spec, req)
+  fingerprint <- runtime_fingerprint(spec, version)
+  digest <- portable_r_digest(version)
   pkg <- req[!req$name %in% base_packages(), ]
   dependencies <- vapply(
     split(pkg, pkg$name),
@@ -249,10 +292,10 @@ lock_windows <- function(spec) {
       'version = "0.1.0"',
       'type = "project"',
       '[dependencies]',
-      sprintf('R = "== %s"', runtime_version()),
+      sprintf('R = "== %s"', version),
       unname(dependencies),
       '[tool.rig]',
-      sprintf('r-versions = ["%s"]', runtime_version()),
+      sprintf('r-versions = ["%s"]', version),
       sprintf('platforms = ["%s"]', platform),
       'prefer-binary = true',
       '[[repository]]',
@@ -264,9 +307,15 @@ lock_windows <- function(spec) {
   if (system2("rig", c("proj", "lock")) != 0L) {
     stop("Could not resolve Windows CRAN binary versions.")
   }
-  target <- windows_target("rproj.lock")
-  check_resolved_versions(req, target)
-  if (!identical(fingerprint, runtime_fingerprint(spec))) {
+  target <- windows_target("rproj.lock", r_version = version)
+  current <- runtime_requirements(spec)
+  check_resolved_versions(current, target)
+  if (
+    !identical(
+      fingerprint,
+      runtime_fingerprint(spec, runtime_version(spec, current))
+    )
+  ) {
     stop("Dependency inputs changed while locking; retry.")
   }
   parent <- dirname(spec$lock)
@@ -290,7 +339,11 @@ lock_windows <- function(spec) {
   on.exit(unlink(staged), add = TRUE)
   stopifnot(file.copy("rproj.lock", staged))
   cat(
-    sprintf('\n[shinytauri]\ninput_sha256 = "%s"\n', fingerprint),
+    sprintf(
+      '\n[shinytauri]\ninput_sha256 = "%s"\nruntime_sha256 = "%s"\n',
+      fingerprint,
+      digest
+    ),
     file = staged,
     append = TRUE
   )
