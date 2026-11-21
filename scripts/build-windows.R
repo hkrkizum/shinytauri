@@ -285,6 +285,16 @@ stage_app <- function(spec, dest, output = NULL) {
     }
     copy_resource(source, file.path(dest, relative))
   }
+  # shinyAppDir accepts app.R or server.R and looks them up case-insensitively.
+  entry <- list.files(
+    dest,
+    pattern = "^(app|server)[.]r$",
+    full.names = TRUE,
+    ignore.case = TRUE
+  )
+  if (!any(utils::file_test("-f", entry))) {
+    stop("Missing Shiny entry point in files: include app.R or server.R")
+  }
 }
 
 run_tauri <- function(engine, config, triple, target_dir) {

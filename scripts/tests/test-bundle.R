@@ -1,5 +1,19 @@
 source("scripts/build-windows.R")
 
+expect_bundle_error <- function(expr, text) {
+  error <- tryCatch(
+    {
+      force(expr)
+      NULL
+    },
+    error = identity
+  )
+  stopifnot(
+    inherits(error, "error"),
+    grepl(text, conditionMessage(error), fixed = TRUE)
+  )
+}
+
 check_bundle <- function(profile, included, excluded, quarto) {
   spec <- read_bundle(profile)
   target <- windows_target(spec$lock)
@@ -154,11 +168,10 @@ check_external_build <- function() {
 
   # The output may be under the project, but cannot also be an input resource.
   writeLines(sub('"app.R"', '"app.R", "dist"', lines, fixed = TRUE), profile)
-  stopifnot(grepl(
-    "output",
-    try(subject$build_windows(profile, output, engine), silent = TRUE),
-    ignore.case = TRUE
-  ))
+  expect_bundle_error(
+    subject$build_windows(profile, output, engine),
+    "output directory"
+  )
 }
 
 check_external_build()
@@ -171,24 +184,31 @@ check_preflight <- function() {
   lock <- file.path(root, "rproj.lock")
   lines <- readLines(spec$lock)
   writeLines(sub("binary = true", "binary = false", lines, fixed = TRUE), lock)
-  stopifnot(grepl("binary", try(windows_target(lock), silent = TRUE)))
+  expect_bundle_error(windows_target(lock), "binary")
   writeLines(
     sub('r_version = "4.6.2"', 'r_version = "3.0.0"', lines, fixed = TRUE),
     lock
   )
-  stopifnot(grepl("3.0.0", try(windows_target(lock), silent = TRUE)))
+  expect_bundle_error(windows_target(lock), "3.0.0")
   spec$app <- file.path(root, "app")
   spec$files <- c("app.R", "www")
   stopifnot(
     dir.create(file.path(spec$app, "www"), recursive = TRUE),
     file.create(file.path(spec$app, "app.R"))
   )
+  # Match shiny::runApp's case-insensitive directory entry points, including
+  # an HTML UI served by www/ and server.R without a separate ui.R.
+  spec$files <- "www"
+  expect_bundle_error(
+    stage_app(spec, file.path(root, "no-entry")),
+    "entry point"
+  )
+  stopifnot(file.create(file.path(spec$app, "SERVER.r")))
+  spec$files <- c("SERVER.r", "www")
+  stage_app(spec, file.path(root, "html-ui"))
   if (.Platform$OS.type != "windows") {
     stopifnot(file.symlink(root, file.path(spec$app, "www/jump")))
-    stopifnot(grepl(
-      "link",
-      try(stage_app(spec, file.path(root, "stage")), silent = TRUE)
-    ))
+    expect_bundle_error(stage_app(spec, file.path(root, "stage")), "link")
   }
 }
 check_preflight()
@@ -220,6 +240,6 @@ check_cli_entry <- function() {
   )
   stopifnot(file.create(file.path(root, "missing.lock")))
   cat('\nproductName = "NUL.txt"\n', file = profile, append = TRUE)
-  stopifnot(grepl("productName", try(read_bundle(profile), silent = TRUE)))
+  expect_bundle_error(read_bundle(profile), "productName")
 }
 check_cli_entry()
