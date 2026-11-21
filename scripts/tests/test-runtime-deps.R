@@ -25,7 +25,7 @@ check_runtime_inputs <- function() {
   )
   digest <- runtime_fingerprint(spec)
   cat("Remotes: github::example/sample\n", file = metadata, append = TRUE)
-  stopifnot(!identical(digest, runtime_fingerprint(spec)))
+  stopifnot(!identical(digest, runtime_fingerprint(spec, "4.6.2")))
   expect_bundle_error(runtime_requirements(spec), "Remotes")
   writeLines("Package: sample\nImports: injected (>x)", metadata)
   expect_bundle_error(runtime_requirements(spec), "dependency")
@@ -47,10 +47,16 @@ check_runtime_inputs <- function() {
     Packages = list(shiny = record)
   )
   jsonlite::write_json(lock, input, auto_unbox = TRUE)
-  stopifnot(identical(renv_requirements(input), "shiny (== 1.14.0)"))
+  stopifnot(identical(
+    renv_requirements(input),
+    c("R (== 4.6.2)", "shiny (== 1.14.0)")
+  ))
   lock$Packages$shiny$Repository <- "RSPM"
   jsonlite::write_json(lock, input, auto_unbox = TRUE)
-  stopifnot(identical(renv_requirements(input), "shiny (== 1.14.0)"))
+  stopifnot(identical(
+    renv_requirements(input),
+    c("R (== 4.6.2)", "shiny (== 1.14.0)")
+  ))
   lock$R$Repositories[[1L]]$URL <- "https://private.invalid"
   jsonlite::write_json(lock, input, auto_unbox = TRUE)
   expect_bundle_error(renv_requirements(input), "repository")
@@ -58,9 +64,9 @@ check_runtime_inputs <- function() {
   lock$Packages$shiny$Source <- "GitHub"
   jsonlite::write_json(lock, input, auto_unbox = TRUE)
   expect_bundle_error(renv_requirements(input), "shiny")
-  lock$R$Version <- "4.1.0"
+  lock$R$Version <- NULL
   jsonlite::write_json(lock, input, auto_unbox = TRUE)
-  expect_bundle_error(renv_requirements(input), "4.1.0")
+  expect_bundle_error(renv_requirements(input), "version")
 }
 
 check_minimal_preflight <- function() {
@@ -128,3 +134,104 @@ check_committed_windows_lock <- function() {
   expect_bundle_error(verify_runtime_lock(spec), "shinytauri lock")
 }
 check_committed_windows_lock()
+
+check_runtime_selection <- function() {
+  tmp <- tempfile()
+  stopifnot(dir.create(tmp))
+  on.exit(unlink(tmp, recursive = TRUE))
+  spec <- list(packages = "shiny")
+  stopifnot(
+    identical(runtime_version(spec), "4.6.2"),
+    identical(runtime_version(c(spec, list(rVersion = "4.5.3"))), "4.5.3"),
+    !identical(
+      runtime_fingerprint(spec),
+      runtime_fingerprint(c(spec, list(rVersion = "4.5.3")))
+    )
+  )
+  description <- file.path(tmp, "DESCRIPTION")
+  writeLines(
+    "Package: demo\nDepends: R (== 4.5.3)\nImports: shiny",
+    description
+  )
+  spec <- list(dependencyFile = description)
+  stopifnot(identical(runtime_version(spec), "4.5.3"))
+  expect_bundle_error(
+    runtime_version(c(spec, list(rVersion = "4.6.2"))),
+    "4.5.3"
+  )
+  writeLines("Package: demo\nDepends: R (>= 4.5.3), R (< 4.6.0)", description)
+  expect_bundle_error(runtime_version(spec), "4.6.0")
+  stopifnot(identical(
+    runtime_version(c(spec, list(rVersion = "4.5.3"))),
+    "4.5.3"
+  ))
+  file <- file.path(tmp, "renv.lock")
+  lock <- list(
+    R = list(Version = "4.5.3"),
+    Packages = list(
+      shiny = list(
+        Package = "shiny",
+        Source = "Repository",
+        Repository = "CRAN",
+        Version = "1.12.1"
+      )
+    )
+  )
+  jsonlite::write_json(lock, file, auto_unbox = TRUE)
+  spec <- list(dependencyFile = file)
+  stopifnot(identical(runtime_version(spec), "4.5.3"))
+  expect_bundle_error(
+    runtime_version(c(spec, list(rVersion = "4.6.2"))),
+    "4.5.3"
+  )
+}
+check_runtime_selection()
+
+check_lock_pins_runtime <- function() {
+  root <- tempfile()
+  stopifnot(dir.create(root))
+  on.exit(unlink(root, recursive = TRUE))
+  spec <- list(
+    managed = TRUE,
+    packages = "shiny",
+    rVersion = "4.5.3",
+    lock = file.path(root, ".shinytauri/windows.lock")
+  )
+  # Exercise the lock writer without downloading metadata or packages in unit tests.
+  # The fixture stands in for rig's output and is still checked by windows_target.
+  fixture <- readLines("bundles/minimal/rproj.lock")
+  digest <- paste(rep("a", 64L), collapse = "")
+  subject <- new.env(parent = environment())
+  sys.source("scripts/runtime-deps.R", envir = subject)
+  subject$portable_r_digest <- function(version) {
+    stopifnot(identical(version, spec$rVersion))
+    digest
+  }
+  subject$system2 <- function(command, args) {
+    stopifnot(identical(command, "rig"), identical(args, c("proj", "lock")))
+    manifest <- RcppTOML::parseTOML("rproj.toml")
+    stopifnot(
+      identical(manifest$dependencies$R, "== 4.5.3"),
+      identical(manifest$tool$rig[["r-versions"]], "4.5.3")
+    )
+    lines <- sub(
+      'r_version = "4.6.2"',
+      'r_version = "4.5.3"',
+      fixture,
+      fixed = TRUE
+    )
+    writeLines(gsub("/4.6/", "/4.5/", lines, fixed = TRUE), "rproj.lock")
+    0L
+  }
+  subject$lock_windows(spec)
+  recorded <- RcppTOML::parseTOML(spec$lock)$shinytauri
+  stopifnot(identical(recorded$runtime_sha256, digest))
+  verify_runtime_lock(spec)
+  lines <- readLines(spec$lock)
+  writeLines(lines[!startsWith(lines, "runtime_sha256 =")], spec$lock)
+  expect_bundle_error(verify_runtime_lock(spec), "SHA-256")
+  writeLines(lines, spec$lock)
+  spec$rVersion <- "4.6.2"
+  expect_bundle_error(verify_runtime_lock(spec), "shinytauri lock")
+}
+check_lock_pins_runtime()
