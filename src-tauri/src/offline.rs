@@ -54,7 +54,7 @@ fn serve(window: &WebviewWindow, payload: &Path, log: &File) -> Result<()> {
     let bin = home.join("bin/x64");
     let job = process_job()?;
     let mut command = Command::new(bin.join("Rterm.exe"));
-    let quarto = payload.join("quarto/bin/quarto.exe");
+    let quarto = crate::quarto::executable(payload);
     if quarto.is_file() {
         command.env("SHINYTAURI_QUARTO", quarto);
     } else {
