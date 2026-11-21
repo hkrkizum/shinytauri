@@ -159,9 +159,18 @@ testthat::test_that("a background dashboard downloads the requested snapshot", {
     uploadThroughput = 0
   )
   path <- normalizePath(download, winslash = "/")
-  browser$Page$navigate(paste0(
+  page <- browser$Page$navigate(paste0(
     "file:///",
     utils::URLencode(sub("^/", "", path))
   ))
+  if (identical(page$errorText, "net::ERR_BLOCKED_BY_ADMINISTRATOR")) {
+    # Managed Chromium may disallow file navigation. Load the downloaded HTML
+    # in a blank test page while the browser network is still offline.
+    blank <- browser$Page$navigate("about:blank")
+    browser$Page$setDocumentContent(
+      frameId = blank$frameId,
+      html = paste(readLines(path, encoding = "UTF-8"), collapse = "\n")
+    )
+  }
   check_distribution_filter(app)
 })
