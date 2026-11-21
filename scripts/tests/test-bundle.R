@@ -285,10 +285,10 @@ check_preflight <- function() {
   writeLines(sub("binary = true", "binary = false", lines, fixed = TRUE), lock)
   expect_bundle_error(windows_target(lock), "binary")
   writeLines(
-    sub('r_version = "4.6.2"', 'r_version = "3.0.0"', lines, fixed = TRUE),
+    sub('r_version = "4.6.2"', 'r_version = "3.0.0-beta"', lines, fixed = TRUE),
     lock
   )
-  expect_bundle_error(windows_target(lock), "3.0.0")
+  expect_bundle_error(windows_target(lock), "major.minor.patch")
   spec$app <- file.path(root, "app")
   spec$files <- c("app.R", "www")
   stopifnot(
@@ -342,3 +342,5 @@ check_cli_entry <- function() {
   expect_bundle_error(read_bundle(profile), "productName")
 }
 check_cli_entry()
+source("scripts/tests/test-runtime-deps.R")
+source("scripts/tests/test-portable-runtime.R")

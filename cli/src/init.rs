@@ -89,7 +89,7 @@ fn resources(app: &Path) -> Result<Resources> {
     Ok(resources)
 }
 
-fn validate_lock(path: &Path) -> Result<()> {
+fn validate_lock(path: &Path, version: Option<&str>) -> Result<()> {
     let message = || {
         format!(
             "{} needs a Windows x64 Shiny runtime lock. Declare shiny in [dependencies], set a Windows rig target, then run rig proj lock.",
@@ -99,23 +99,32 @@ fn validate_lock(path: &Path) -> Result<()> {
     let lock: Table = fs::read_to_string(path)?
         .parse()
         .map_err(|err| format!("{} ({err})", message()))?;
-    let targets = lock.get("targets").and_then(Value::as_array);
-    for target in targets.into_iter().flatten() {
-        if target.get("platform").and_then(Value::as_str) != Some("x86_64-w64-mingw32") {
-            continue;
-        }
-        let packages = target.get("packages").and_then(Value::as_array);
-        for package in packages.into_iter().flatten() {
-            let groups = package.get("groups").and_then(Value::as_array);
-            if package.get("package").and_then(Value::as_str) == Some("shiny")
-                && groups
-                    .into_iter()
-                    .flatten()
-                    .any(|g| g.as_str() == Some("main"))
-            {
-                return Ok(());
-            }
-        }
+    let mut targets = lock
+        .get("targets")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|target| {
+            target.get("platform").and_then(Value::as_str) == Some("x86_64-w64-mingw32")
+                && version
+                    .is_none_or(|v| target.get("r_version").and_then(Value::as_str) == Some(v))
+        });
+    let target = targets.next().ok_or_else(|| match version {
+        Some(v) => format!("{} has no Windows x64 target for R {v}.", path.display()),
+        None => message(),
+    })?;
+    if targets.next().is_some() {
+        return Err(format!("{} has multiple matching Windows x64 targets. Select a unique target with --r-version.", path.display()).into());
+    }
+    let packages = target.get("packages").and_then(Value::as_array);
+    if packages.into_iter().flatten().any(|package| {
+        package.get("package").and_then(Value::as_str) == Some("shiny")
+            && package
+                .get("groups")
+                .and_then(Value::as_array)
+                .is_some_and(|groups| groups.iter().any(|g| g.as_str() == Some("main")))
+    }) {
+        return Ok(());
     }
     Err(message().into())
 }
@@ -129,7 +138,12 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn initialize(app: &Path, id: &str) -> Result<()> {
+pub(crate) fn initialize(
+    app: &Path,
+    id: &str,
+    packages: Vec<String>,
+    r_version: Option<String>,
+) -> Result<()> {
     check_identifier(id)?;
     let app = fs::canonicalize(app).map_err(|err| format!("{}: {err}", app.display()))?;
     let config = app.join(PROFILE);
@@ -145,15 +159,43 @@ pub(crate) fn initialize(app: &Path, id: &str) -> Result<()> {
     let has_lock = entry(&root_lock)?.is_some();
     let has_manifest = entry(&app.join("rproj.toml"))?.is_some();
     if has_lock {
-        validate_lock(&root_lock)?;
+        validate_lock(&root_lock, r_version.as_deref())?;
     }
-    let use_minimal = !has_lock && !has_manifest;
-    let lock = if use_minimal {
+    if (has_lock || has_manifest) && !packages.is_empty() {
+        return Err("The app already has rig metadata. Declare additional packages there.".into());
+    }
+    let mut dependency_file = None;
+    if !has_lock && !has_manifest {
+        for name in ["renv.lock", "DESCRIPTION"] {
+            if entry(&app.join(name))?.is_some() {
+                dependency_file = Some(name);
+                break;
+            }
+        }
+    }
+    let shiny_only = !has_lock && !has_manifest && dependency_file.is_none() && packages.is_empty();
+    let use_minimal = shiny_only && r_version.is_none();
+    let managed = !has_lock && !has_manifest && !use_minimal;
+    let lock = if managed {
+        ".shinytauri/windows.lock"
+    } else if use_minimal {
         ".shinytauri/rproj.lock"
     } else {
         "rproj.lock"
     };
     let mut table = Table::new();
+    if let Some(version) = r_version {
+        table.insert("rVersion".into(), version.into());
+    }
+    if let Some(source) = dependency_file {
+        table.insert("dependencyFile".into(), source.into());
+    }
+    if !packages.is_empty() {
+        table.insert("packages".into(), packages.into());
+    }
+    if shiny_only {
+        table.insert("checkMinimal".into(), true.into());
+    }
     for (key, value) in [
         ("app", "."),
         ("lock", lock),
@@ -194,11 +236,15 @@ pub(crate) fn initialize(app: &Path, id: &str) -> Result<()> {
         }
         result?;
         println!(
-            "The bundled lock contains shiny and its dependencies. For other packages, edit .shinytauri/rproj.toml and run rig proj lock in .shinytauri/."
+            "The bundled lock contains shiny and its dependencies. For other dependencies, set packages in shinytauri.toml, set lock to .shinytauri/windows.lock, remove checkMinimal, then run shinytauri lock."
         );
     } else {
         write_new(&config, document.as_bytes())?;
-        if !has_lock {
+        if managed {
+            println!(
+                "Run shinytauri lock with this app directory to resolve its Windows runtime packages. Commit the resulting .shinytauri/windows.lock with your app."
+            );
+        } else if !has_lock {
             println!(
                 "Before building, configure your Windows target and run rig proj lock beside rproj.toml."
             );

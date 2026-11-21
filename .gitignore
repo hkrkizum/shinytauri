@@ -16,3 +16,8 @@ target/
 
 # Nix
 .envrc.local
+
+# Rendered manual and local editorial checks
+/docs/_site/
+/docs/.quarto/
+/.yomiyasu/

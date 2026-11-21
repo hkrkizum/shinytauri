@@ -17,9 +17,10 @@ from playwright.sync_api import expect, sync_playwright
 
 def exercise(kind, page, evidence):
     if kind == "minimal":
-        expect(page.locator("#total")).to_have_text("0", timeout=30000)
+        expect(page.locator("#runtime")).to_have_text("R 4.5.3", timeout=30000)
+        expect(page.locator("#total")).to_have_text("0000 (stringr 1.6.0)", timeout=30000)
         page.locator("#count").click()
-        expect(page.locator("#total")).to_have_text("1")
+        expect(page.locator("#total")).to_have_text("0001 (stringr 1.6.0)")
         assert page.locator("#total").evaluate(
             "el => getComputedStyle(el).fontVariantNumeric"
         ) == "tabular-nums"

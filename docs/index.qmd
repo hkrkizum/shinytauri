@@ -1,0 +1,49 @@
+---
+title: "最初の Windows インストーラーを作る"
+---
+
+shinytauri は既存の Shiny アプリを Windows デスクトップアプリとして配布するための CLI である。Linux x86_64 または Windows x64 のビルド機でインストーラーを作成し、Windows の利用者にはそのファイルを渡す。
+
+この手順では `shiny` だけを使うカウンターを配布する。先に[ビルド機に CLI と必要なツールを導入する](installation.qmd)。ビルド中はインターネットに接続しておく。
+
+## 1. Shiny アプリを用意する
+
+`counter` ディレクトリを作り、中に次の内容の `app.R` を保存する。自分のアプリが Shiny 以外のパッケージを使う場合は、[依存パッケージの指定方法](dependencies.qmd)を選んでから初期化する。
+
+```r
+library(shiny)
+
+ui <- fluidPage(
+  actionButton("increment", "1 を足す"),
+  textOutput("count")
+)
+
+server <- function(input, output, session) {
+  output$count <- renderText(as.integer(input$increment))
+}
+
+shinyApp(ui, server)
+```
+
+## 2. 配布設定を作る
+
+```sh
+cd counter
+shinytauri init . --id jp.example.counter
+```
+
+`--id` は製品の識別子である。自分のアプリには固有の値を指定する。`init` が作成した `shinytauri.toml` を開き、`files` に `app.R` があることを確認する。アプリに画像や CSV がある場合は、それらも配布対象に含める。
+
+## 3. インストーラーをビルドする
+
+```sh
+shinytauri build .
+```
+
+この例では CLI に付属する最小の Windows 用ロックでパッケージを決める。`build` はその構成でインストーラーを生成する。完了すると `dist/` に `*-setup.exe` ができる。通常のコード変更では `build` だけを再実行する。依存パッケージを変えた場合は[ロックの更新手順](dependencies.qmd)に従う。
+
+## 4. Windows でカウンターを試す
+
+WebView2 Runtime を導入した Windows 10/11 x64 PC にインストーラーをコピーして実行する。スタートメニューから `counter` を開くと、カウントが 0 と表示される。「1 を足す」を押して 1 になれば、同梱の R とアプリが動作している。
+
+配布時の確認項目と起動ログの場所は[Windows での動作確認](distribution.qmd)を参照する。

@@ -1,0 +1,44 @@
+name: Build and publish the manual
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serialize main from render through publication. Superseded previews can stop.
+concurrency:
+  group: manual-pages-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Render the manual with the locked documentation tools
+        env:
+          MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+        run: nix develop --no-update-lock-file .#docs -c mise run docs:build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_site
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy the rendered manual to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

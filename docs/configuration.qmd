@@ -1,0 +1,64 @@
+---
+title: "配布ファイルと製品情報"
+---
+
+`shinytauri init` はアプリ直下に `shinytauri.toml` を作る。ビルド時に読む設定を別の場所に置くこともできる。
+
+```sh
+shinytauri build --config packaging/bundle.toml --out-dir installers
+```
+
+コマンドを実行した場所を基準に `packaging/bundle.toml` を読み、`installers/` にインストーラーを出力する。`--out-dir` を省くと、設定ファイルの隣に `dist/` を作る。`build` のアプリディレクトリ引数と `--config` はどちらか一方を使う。
+
+## 設定例
+
+次は既存の rig ロックを持つカウンターアプリの例である。設定ファイルは `app.R` と同じディレクトリに置く。
+
+```toml
+app = "."
+files = ["app.R", "www/style.css"]
+lock = "rproj.lock"
+productName = "Counter"
+identifier = "jp.example.counter"
+version = "1.0.0"
+title = "カウンター"
+quarto = false
+```
+
+| 項目 | 意味 |
+| --- | --- |
+| `app` | Shiny のアプリディレクトリ。設定ファイルを基準に相対パスで指定する。 |
+| `files` | アプリを起点とするファイルまたはディレクトリの相対パス。例の `www/style.css` はインストール後も同じ位置に入る。 |
+| `emptyDirs` | 中身を配布せず、ディレクトリ自体を用意したいときに指定する。元のアプリにそのディレクトリが必要である。 |
+| `lock` | 配布する R とパッケージのロック。設定ファイルを基準に指定する。[依存パッケージの決め方](dependencies.qmd) |
+| `dependencyFile` | `lock` コマンドが読む `renv.lock` または `DESCRIPTION`。設定ファイルからの相対パス。 |
+| `packages` | 追加する CRAN パッケージの配列。例は `["DT", "glue=1.8.0"]`。 |
+| `checkMinimal` | 最小ロックでビルドするときに `init` が設定する。明示的な依存定義への切り替えは[依存パッケージの手順](dependencies.qmd)を参照する。 |
+| `rVersion` | インストーラーに同梱する R の完全なバージョン。例は `"4.5.3"`。[入力別の選択規則](dependencies.qmd#r-version) |
+| `productName` | インストーラーに表示する製品名。Windows で使用できるファイル名を選ぶ。 |
+| `identifier` | アプリを識別する値。初期化時は `--id jp.example.counter` のように組織と製品に固有の値を渡す。 |
+| `version` | 製品のバージョン。`1.2.3` のように整数を3個並べ、ピリオドで区切る。 |
+| `title` | ウィンドウのタイトル。省略すると、指定した `productName` を使う。 |
+| `quarto` | `true` なら Windows 用 Quarto CLI を同梱する。既定値は `false`。 |
+
+同じ PC に複数のアプリを入れる場合は、製品ごとに `productName` と `identifier` の両方を変える。同じ製品を更新するときは両方を保ち、`version` を上げる。
+
+## 作成者・ライセンス・アイコン
+
+`shinytauri.toml` には作成者名、ライセンス、アプリアイコンを指定する項目はない。Windows の「インストールされているアプリ」に表示する発行元には、既定で `identifier` の 2 番目の要素を使う。たとえば `jp.example.counter` の発行元は `example` になる。
+
+アプリ自身のライセンス文を一緒に配布するには、アプリ直下に `LICENSE.txt` を置き、`files` にその名前を加える。インストール先では `offline/app/LICENSE.txt` に入る。ホストの MIT ライセンスは別に `offline/LICENSE` に入る。
+
+発行元を明示する場合や、インストーラーにライセンスの同意画面を設ける場合は、shinytauri のソースで `src-tauri/tauri.conf.json` の `bundle.publisher` または `bundle.licenseFile` を設定する。アプリアイコンを変更するには `bundle.icon` で参照する `src-tauri/icons/` の画像を差し替える。新しいファイルを参照する場合は `cli/src/template.rs` の同梱一覧にも加える。リポジトリのルートで `cargo install --locked --path cli --force` を実行し、その CLI でアプリを再ビルドする。[Tauri のバンドル設定](https://v2.tauri.app/reference/config/#bundleconfig)
+
+## 同梱ファイルを選ぶ
+
+`init` は `app.R` または `ui.R` と `server.R` の組を探す。`global.R`、`R/`、`www/`、`data/` にある実行用ファイルも初期設定に含める。`rhino.yml` があるアプリでは `app/` や `config.yml` も対象になる。独自の場所にあるテンプレートや辞書は `files` に追記する。
+
+初期設定にはその時点で見つかったファイル名が並ぶ。`init` は既存の設定を上書きしない。後から `www/logo.png` を追加したら `files` にその名前を加える。ディレクトリ名の `www` を指定すると、以降のビルドでは隠しファイルを含む中身全体をコピーする。配布用ディレクトリの中身はあらかじめ確認しておく。
+
+Rhino が起動時に参照する `app/static/` など、空でも必要な場所は `emptyDirs = ["app/static"]` で残せる。ビルドスクリプトが配布物のディレクトリを作るため、アプリにダミーファイルを追加する必要はない。ファイルのパスは区切り文字に `/` を使う。配布対象にはアプリの外へ出るパスやシンボリックリンクを指定できない。
+
+## Quarto を使うアプリ
+
+`quarto = true` を設定すると、Quarto CLI 1.11.9 が `offline/quarto/` に入る。アプリは環境変数 `SHINYTAURI_QUARTO` から実行ファイルの場所を取得できる。Quarto 文書やテンプレートは `files` に、`knitr` など実行時に使う R パッケージは配布用の依存定義に含める。設定例と動作は[同梱の Rhino デモ](demo.qmd)を参照する。

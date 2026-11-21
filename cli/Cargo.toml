@@ -14,3 +14,10 @@ path = "src/main.rs"
 clap     = { features = ["derive"], version = "4.5" }
 tempfile = "3"
 toml     = "1"
+
+[profile.dist]
+inherits = "release"
+lto      = "thin"
+
+[package.metadata.dist]
+dist = true

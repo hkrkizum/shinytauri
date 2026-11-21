@@ -44,6 +44,19 @@ depends     = ["fix:*"]
 description = "Apply available fixes, then run all formatting and lint checks"
 run         = [{ task = "QA" }]
 
+# Documentation ────────────────────────────────────────────────────────────────
+[tasks."docs:build"]
+description = "Render the Japanese CLI manual"
+run         = "quarto render docs"
+
+[tasks."docs:lint"]
+description = "Review Japanese wording in the README and manual with yomiyasu"
+run = """
+for doc in ([README.md] | append (glob 'docs/*.qmd')) {
+  python3 .agents/skills/yomiyasu/scripts/yomiyasu_lint.py --doc-type manual $doc
+}
+"""
+
 # Tests ────────────────────────────────────────────────────────────────────────
 [tasks.test]
 depends = [

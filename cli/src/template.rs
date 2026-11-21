@@ -19,6 +19,7 @@ const ENGINE_FILES: &[(&str, &[u8])] = engine_files![
     "rproj.toml",
     "rproj.lock",
     "scripts/build-windows.R",
+    "scripts/runtime-deps.R",
     "scripts/serve-bundled.R",
     "ui/index.html",
     "src-tauri/build.rs",

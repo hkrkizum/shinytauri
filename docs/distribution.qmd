@@ -1,0 +1,36 @@
+---
+title: "Windows での動作確認"
+---
+
+ビルドが成功すると最後にインストーラーのパスが表示される。通常は設定ファイルの隣の `dist/` にある `*-setup.exe` を利用者に渡す。CLI やアプリのソースを別途渡す必要はない。
+
+## 配布前に試す
+
+1. Microsoft Edge WebView2 Runtime を導入した Windows 10/11 x64 のテスト用 PC を用意する。同梱環境の動作を確認できるよう、R と Quarto が入っていない PC を使う。
+2. インストーラーをコピーし、ネットワークを切断して実行する。スタートメニューから設定した製品名のアプリを起動する。
+3. 画面を操作し、入力に応じて出力が変わることを確認する。画像や CSS、同梱データ、レポートなど、アプリが使うファイルも試す。
+4. アプリのウィンドウを閉じて、同梱 R と子プロセスが終了したことをタスク マネージャーで確認する。オフラインのまま再起動する。
+
+エンドユーザーが使うのはデスクトップアプリのウィンドウである。Tauri ホストは同梱 R を起動し、Shiny が `127.0.0.1` の空きポートで待ち受けてからその URL を WebView2 に表示する。外部サービスにアクセスするアプリを配布した場合、そのサービスを使う操作には引き続きネットワーク接続が必要である。
+
+## エラーの切り分け
+
+| 症状 | 確認すること |
+| --- | --- |
+| `init` がアプリを見つけない | 指定先に `app.R` または `ui.R` と `server.R` があるか確認する。 |
+| ファイルやディレクトリをビルド時に見つけられない | `app` と `lock` は設定ファイルから、`files` と `emptyDirs` はアプリからたどる。綴りと大文字・小文字を照合する。 |
+| 依存定義とロックが一致しない | `dependencyFile` や `packages` を変更した後は `shinytauri lock .` を再実行する。別名の設定では `shinytauri lock --config packaging/bundle.toml` とする。 |
+| Windows ターゲット、R バージョン、Windows バイナリを指すエラーが出る | [Windows 用の依存定義](dependencies.qmd)を確認する。Linux 側でインストール済みのパッケージだけでは配布できない。 |
+| インストール後に Shiny が立ち上がらない | ウィンドウタイトルに表示されたログを開く。エラーが示す R パッケージは依存定義に、画像やデータは `files` に含まれているか確認する。 |
+| Quarto レポートだけ失敗する | `quarto = true`、文書の相対パス、R の実行時依存を確認する。アプリは同梱 Quarto の場所を `SHINYTAURI_QUARTO` から取得する。 |
+
+## インストーラーの中身
+
+[shinyelectron の配布方式](https://github.com/coatless-rpkg/shinyelectron)を参考に、ポータブル R とアプリが使う R ライブラリを別のディレクトリに配置する。CLI は [portable-r-windows の公式リリース](https://github.com/portable-r/portable-r-windows/releases)の SHA-256 を Windows 用ロックに記録し、ビルド時に取得した R の ZIP と照合する。既存の rig ロックに SHA-256 がない場合も、公式の値で照合する。Quarto を同梱するときは [Windows 版 1.11.9](https://github.com/quarto-dev/quarto-cli/releases/tag/v1.11.9) のアーカイブを固定の SHA-256 と照合する。R パッケージはロックの URL から取得し、展開後の名前とバージョンを照合する。
+
+| 配置先 | 用途 |
+| --- | --- |
+| `offline/app/` | Shiny が作業ディレクトリとして開くアプリ本体 |
+| `offline/R/`、`offline/library/` | ポータブル R とアプリの実行用パッケージ |
+| `offline/serve-bundled.R` | 同梱 R でアプリを起動する共通スクリプト |
+| `offline/quarto/` | `quarto = true` の場合に使う Quarto CLI |

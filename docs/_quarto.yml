@@ -1,0 +1,42 @@
+project:
+  type: website
+  output-dir: _site
+
+lang: ja
+
+website:
+  title: shinytauri
+  description: Shiny アプリを Windows デスクトップアプリとして配布するための CLI マニュアル
+  site-url: https://hkrkizum.github.io/shinytauri/
+  repo-url: https://github.com/hkrkizum/shinytauri
+  page-navigation: true
+  search: true
+  navbar:
+    title: shinytauri
+    left:
+      - text: CLI マニュアル
+        href: index.qmd
+    right:
+      - text: GitHub
+        href: https://github.com/hkrkizum/shinytauri
+  sidebar:
+    style: docked
+    contents:
+      - section: アプリを配布する
+        contents:
+          - index.qmd
+          - installation.qmd
+          - dependencies.qmd
+          - configuration.qmd
+          - distribution.qmd
+      - section: プロジェクトに参加する
+        contents:
+          - development.qmd
+          - demo.qmd
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    code-copy: true
+    link-external-icon: false

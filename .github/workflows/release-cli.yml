@@ -8,64 +8,95 @@ permissions:
   contents: read
 
 jobs:
-  binary:
+  archive:
     strategy:
       matrix:
         include:
           - os: ubuntu-22.04
-            executable: shinytauri
-            asset: shinytauri-x86_64-linux
+            target: x86_64-unknown-linux-gnu
+            suffix: tar.xz
+            dist_sha256: 7fee44ff3ff71ed0064b32d4ec62fee6b58bd37c5887b12a86aedddc5af0c7b5
           - os: windows-2022
-            executable: shinytauri.exe
-            asset: shinytauri-x86_64-windows.exe
+            target: x86_64-pc-windows-msvc
+            suffix: zip
+            dist_sha256: 7bb53fbc998321f77a3bbb044084a52747c8ed041cf6d6a604802aa57b9c80c6
     runs-on: ${{ matrix.os }}
+    env:
+      TARGET: ${{ matrix.target }}
+      SUFFIX: ${{ matrix.suffix }}
+      RELEASE_TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
-      - name: Test the CLI and build a release binary
-        shell: bash
-        run: |
-          cargo test --manifest-path cli/Cargo.toml --locked
-          cargo build --manifest-path cli/Cargo.toml --locked --release
-      - name: Verify the binary outside the checkout
+      - name: Test the CLI
+        run: cargo test --manifest-path cli/Cargo.toml --locked
+      - name: Package with dist
         shell: bash
         env:
-          EXECUTABLE: ${{ matrix.executable }}
-          ASSET: ${{ matrix.asset }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          DIST_SHA256: ${{ matrix.dist_sha256 }}
         run: |
-          mkdir release
-          cp "cli/target/release/$EXECUTABLE" "release/$ASSET"
-          binary="$PWD/release/$ASSET"
-          cd "$(mktemp -d)"
-          test "$("$binary" --version)" = "shinytauri ${RELEASE_TAG#cli-v}"
-          "$binary" --help
+          d=$(mktemp -d)
+          package="cargo-dist-$TARGET"
+          url="https://github.com/axodotdev/cargo-dist/releases/download/v0.34.0/$package.$SUFFIX"
+          curl -fsSL --retry 3 "$url" -o "$d/$package.$SUFFIX"
+          (cd "$d" && echo "$DIST_SHA256  $package.$SUFFIX" | sha256sum -c -)
+          if [[ "$SUFFIX" == zip ]]; then
+            unzip -q "$d/$package.zip" dist.exe -d "$d"
+            dist="$d/dist.exe"
+          else
+            tar -xJf "$d/$package.tar.xz" -C "$d" "$package/dist"
+            dist="$d/$package/dist"
+          fi
+          "$dist" build --artifacts=local --target "$TARGET" --tag "${RELEASE_TAG#cli-}"
+      - name: Verify the release archive outside the checkout
+        shell: bash
+        run: |
+          repo="$PWD"
+          package="shinytauri-cli-$TARGET"
+          tmp=$(mktemp -d)
+          cd target/distrib
+          sha256sum -c "$package.$SUFFIX.sha256"
+          if [[ "$SUFFIX" == zip ]]; then
+            unzip -q "$package.zip" -d "$tmp"
+            bin="$tmp/shinytauri.exe"
+          else
+            tar -xJf "$package.tar.xz" -C "$tmp"
+            bin="$tmp/$package/shinytauri"
+          fi
+          cmp "$(dirname "$bin")/LICENSE" "$repo/LICENSE"
+          cp -r "$repo/examples/minimal" "$tmp/external app"
+          cd "$tmp/external app"
+          test "$("$bin" --version)" = "shinytauri ${RELEASE_TAG#cli-v}"
+          "$bin" init . --id org.example.release
+          test -s shinytauri.toml
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset }}
-          path: release/${{ matrix.asset }}
+          name: cli-archive-${{ matrix.target }}
+          path: |
+            target/distrib/shinytauri-cli-${{ matrix.target }}.${{ matrix.suffix }}
+            target/distrib/shinytauri-cli-${{ matrix.target }}.${{ matrix.suffix }}.sha256
           if-no-files-found: error
 
   windows-smoke:
     uses: ./.github/workflows/cli-windows-smoke.yml
 
   publish:
-    needs: [binary, windows-smoke]
+    needs: [archive, windows-smoke]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: shinytauri-x86_64-*
+          pattern: cli-archive-*
           path: release
           merge-multiple: true
-      - name: Publish both binaries and their checksums
+      - name: Publish archives and checksums
         working-directory: release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          sha256sum shinytauri-x86_64-linux shinytauri-x86_64-windows.exe > SHA256SUMS
-          gh release create "$RELEASE_TAG" --verify-tag --generate-notes --title "$RELEASE_TAG" \
-            shinytauri-x86_64-linux shinytauri-x86_64-windows.exe SHA256SUMS
+          cat ./*.sha256 > sha256.sum
+          sha256sum -c sha256.sum
+          gh release create "$RELEASE_TAG" --verify-tag --generate-notes --title "$RELEASE_TAG" ./*
