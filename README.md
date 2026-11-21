@@ -1,6 +1,6 @@
 # shinytauri
 
-Tauri 2 のウィンドウで Rhino（Shiny）アプリを実行するプロジェクトです。最終的な配布先は、R のインストールやインターネット接続のない Windows PC です。
+Shiny アプリと R を Windows 用の Tauri 2 インストーラーにまとめるプロジェクトです。既定の配布対象は `src-shiny/` にあるデモです。
 
 ## 開発用アプリの起動
 
@@ -11,11 +11,11 @@ mise run setup:r
 cargo tauri dev
 ```
 
-`cargo tauri dev` は Rhino を `127.0.0.1:3838` で起動し、Tauri のウィンドウに表示します。「1 を足す」を押すと、R がカウントを更新します。ブラウザーだけで開発するときは、代わりに `rhino/` で `rig run dev.R` を実行し、同じアドレスを開いてください。どちらも同じポートを使うので、切り替えるときは先に起動した方を終了してください。
+`cargo tauri dev` は Rhino を `127.0.0.1:3838` で起動し、Tauri のウィンドウに表示します。「1 を足す」を押すと、R がカウントを更新します。ブラウザーだけで開発するときは、代わりに `src-shiny/` で `rig run dev.R` を実行し、同じアドレスを開いてください。どちらも同じポートを使うので、切り替えるときは先に起動した方を終了してください。
 
 Shiny は起動時に mirai のローカルデーモンを4つ立ち上げます。全セッションでこの4つを共有し、アプリの終了時にまとめて停止します。時間のかかる計算は、サーバーモジュールの `shiny::ExtendedTask` から `mirai::mirai()` に渡せます。[mirai の Shiny 統合ガイド](https://mirai.r-lib.org/articles/shiny.html)
 
-デモの「サイコロを振る」は、選んだ回数だけ2個のサイコロを振り、出目の合計の実測値を理論値と比較します。計算中に「1 を足す」を試せるよう、デーモン内に2秒の待ち時間を設けています。モジュールの実装は `rhino/app/view/dice.R` にあります。
+デモの「サイコロを振る」は、選んだ回数だけ2個のサイコロを振り、出目の合計の実測値を理論値と比較します。計算中に「1 を足す」を試せるよう、デーモン内に2秒の待ち時間を設けています。モジュールの実装は `src-shiny/app/view/dice.R` にあります。
 
 ## 集計を Quarto ダッシュボードとして保存する
 
@@ -25,33 +25,33 @@ Shiny は起動時に mirai のローカルデーモンを4つ立ち上げます
 
 レンダリングはセッションごとの `shiny::ExtendedTask` から mirai デーモンに渡します。作成中もアプリを操作でき、その後の入力や集計は、作成中のレポートに影響しません。新しい値で保存するには、もう一度「レポートを作成」を押します。
 
-レイアウトは `rhino/app/report/dashboard.qmd`、値の受け渡しと HTML の後処理は `rhino/app/report/render.R` にあります。Quarto の `embed-resources: true` で生成した HTML を R で読み、`data:` URL のスタイルシート・CSS の入れ子の `@import`・スクリプトを復号し、HTML 内の `<style>` と `<script>` に展開します。画像とフォントは埋め込みのままです。プレビューサービス側でインライン CSS や JavaScript も制限される場合は、保存した HTML をローカルブラウザーで開いてください。
+レイアウトは `src-shiny/app/report/dashboard.qmd`、値の受け渡しと HTML の後処理は `src-shiny/app/report/render.R` にあります。Quarto の `embed-resources: true` で生成した HTML を R で読み、`data:` URL のスタイルシート・CSS の入れ子の `@import`・スクリプトを復号し、HTML 内の `<style>` と `<script>` に展開します。画像とフォントは埋め込みのままです。プレビューサービス側でインライン CSS や JavaScript も制限される場合は、保存した HTML をローカルブラウザーで開いてください。
 
 ## ソースと依存関係
 
 - `src-tauri/` に Rust のエントリーポイントと Tauri 設定を置きます。
-- `rhino/` が Rhino と rig のプロジェクトルートです。`app.R` が入口で、画面とサーバーの実装は `app/main.R`、画像などの静的ファイルは `app/static/` に置きます。
-- R の直接依存は `rhino/rproj.toml` で宣言します。`rhino/` で `rig proj add パッケージ名` を実行し、更新されたマニフェストと `rproj.lock` を一緒にコミットします。マニフェストを手で編集した場合は `rig proj lock` でロックを更新します。[rig のプロジェクトガイド](https://rig.r-lib.org/proj-guide.html)
+- `src-shiny/` は既定の Shiny アプリのソースディレクトリです。このデモは Rhino と rig を使います。`app.R` が入口で、画面とサーバーの実装は `app/main.R`、画像などの静的ファイルは `app/static/` に置きます。
+- R の直接依存は `src-shiny/rproj.toml` で宣言します。`src-shiny/` で `rig proj add パッケージ名` を実行し、更新されたマニフェストと `rproj.lock` を一緒にコミットします。マニフェストを手で編集した場合は `rig proj lock` でロックを更新します。[rig のプロジェクトガイド](https://rig.r-lib.org/proj-guide.html)
 
-ロックファイルには R 4.6.2 の x86_64 Linux 用と x64 Windows 用の依存関係を記録しています。`mise run setup:r` は `rhino/` で `rig proj sync --locked` を実行します。rig はロックされた R がユーザー領域に未導入ならインストールし、パッケージを `rhino/.rvenv/lib/` に復元します。ロックファイルの更新後も同じタスクを使えます。
+ロックファイルには R 4.6.2 の x86_64 Linux 用と x64 Windows 用の依存関係を記録しています。`mise run setup:r` は `src-shiny/` で `rig proj sync --locked` を実行します。rig はロックされた R がユーザー領域に未導入ならインストールし、パッケージを `src-shiny/.rvenv/lib/` に復元します。ロックファイルの更新後も同じタスクを使えます。
 
 ## Windows x64 用オフラインインストーラー
 
-配布物は NSIS 形式の `shinytauri_*_x64-setup.exe` 1 ファイルです。導入先は **Microsoft Edge WebView2 Runtime がインストール済みの Windows 10/11 x64** を想定しています。受け取った PC はオフラインのままインストーラーを実行し、スタートメニューから起動できます。R と Quarto は同梱されており、rig や開発ツールの導入も不要です。インストーラーの `webviewInstallMode` は `skip` で、既存の WebView2 を利用します。
+配布物は NSIS 形式の `<製品名>_*_x64-setup.exe` 1 ファイルです。導入先は **Microsoft Edge WebView2 Runtime がインストール済みの Windows 10/11 x64** を想定しています。受け取った PC はオフラインのままインストーラーを実行し、スタートメニューから起動できます。R は同梱され、Rhino デモにはレポート作成用の Quarto も含まれます。
 
 ### ビルド
 
-ネットに接続できるビルド機で、リポジトリのルートから実行します。x86_64 Linux では、mise がクロスコンパイル用の Nix シェルを起動します。このシェルには Rust の Windows ターゲット、MinGW-w64、NSIS、R とビルド用 R パッケージが含まれます。
+ネットに接続できるビルド機で、リポジトリのルートから実行します。x86_64 Linux では、mise が Rust の Windows ターゲット、MinGW-w64、NSIS、rig を含む Nix シェルを起動します。引数を省略すると Rhino デモをビルドします。
 
 ```sh
 mise trust
 mise run build:windows
+mise run build:windows bundles/minimal/bundle.toml
 ```
 
-Windows x64 でネイティブビルドする場合は、Visual Studio Build Tools の「C++ によるデスクトップ開発」と Windows SDK、rustup（x64 MSVC）、R 4.6.2（`Rscript` に PATH を通す）、Nushell、mise を準備します。PowerShell で次を実行してください。
+Windows x64 でネイティブビルドする場合は、Visual Studio Build Tools の「C++ によるデスクトップ開発」と Windows SDK、rustup（x64 MSVC）、rig 0.11.1、Nushell、mise を準備します。PowerShell で次を実行してください。
 
 ```powershell
-Rscript --vanilla -e "install.packages(c('RcppTOML', 'jsonlite'), repos='https://cloud.r-project.org')"
 cargo install tauri-cli --version 2.12.6 --locked
 mise trust
 mise run build:windows
@@ -59,11 +59,29 @@ mise run build:windows
 
 成果物は `src-tauri/target/<target>/release/bundle/nsis/` に出力されます。`<target>` は Linux ビルドで `x86_64-pc-windows-gnu`、Windows ビルドで `x86_64-pc-windows-msvc` です。
 
+### 配布するアプリの指定
+
+配布設定 TOML を引数に渡します。設定はアプリの外に置けます。`bundles/minimal/bundle.toml` の例では、アプリのソースは `examples/minimal/app.R` と `www/` だけです。
+
+```toml
+app         = "../../examples/minimal"
+files       = ["app.R", "www"]
+lock        = "rproj.lock"
+productName = "shinytauri-minimal"
+identifier  = "io.github.hkrkizum.shinytauri.minimal"
+```
+
+- `app` と `lock` は配布設定ファイルからの相対パスです。`app` は `shiny::runApp(".")` で起動できるディレクトリを指します。`files` にはアプリを基準に、実行に使うファイルやディレクトリを列挙します。ディレクトリの中身は階層を保ってコピーされるため、`ui.R`・`server.R` 形式や独自の `data/` も同じ方法で指定できます。
+- `lock` は配布先で使う R とパッケージの rig ロックです。既存のアプリ用ロックを指定するか、最小例のように配布設定の隣に `rproj.toml` を置きます。そのプロジェクトの `[dependencies]` に `shiny` とアプリが実行時に使うパッケージを宣言し、そのディレクトリで `rig proj lock` を実行します。ロックには対応する R バージョンの Windows x64 ターゲットと `main` の Windows バイナリが必要です。
+- `quarto = true` で Quarto CLI を同梱します。既定値は `false` です。別製品として配布する場合は固有の `productName` と `identifier` を指定します。既定値はリポジトリの Tauri 設定に従います。
+
+ビルド機用の R とビルド用パッケージ（`RcppTOML`、`jsonlite`、`filelock`）は、リポジトリ直下の `rproj.toml` と `rproj.lock` で管理します。ビルドタスクはルートで `rig proj sync --locked` を実行し、`rig run --rscript` でビルドスクリプトを起動します。
+
 ### 同梱内容と起動の仕組み
 
-[shinyelectron の bundled 方式](https://github.com/coatless-rpkg/shinyelectron)を参考に、ポータブル R とアプリ専用ライブラリを Tauri のリソースとして配置します。ビルドタスクは `rhino/rproj.lock` の Windows x64 ターゲットを読み、対応する [portable-r-windows](https://github.com/portable-r/portable-r-windows/releases) の ZIP の SHA-256 を照合します。続いて `main` グループの Windows バイナリをロックされた URL から取得し、パッケージ名とバージョンを照合して、Rhino のコード・設定と一緒に格納します。R を更新するときはロックの更新と合わせて `scripts/build-windows.R` の公式配布物の SHA-256 も更新してください。
+[shinyelectron の bundled 方式](https://github.com/coatless-rpkg/shinyelectron)を参考に、ポータブル R とアプリ専用ライブラリを Tauri のリソースとして配置します。ビルドタスクは配布設定で指定したロックの Windows x64 ターゲットを読み、対応する [portable-r-windows](https://github.com/portable-r/portable-r-windows/releases) の ZIP の SHA-256 を照合します。続いて `main` グループの Windows バイナリをロックされた URL から取得し、パッケージ名とバージョンを照合します。アプリは `offline/app/` に置き、Tauri の共通ランチャーがそこを作業ディレクトリとして起動します。配布する R を更新するときはロックの更新と合わせて `scripts/build-windows.R` の公式配布物の SHA-256 も更新してください。
 
-同じビルドタスクが Quarto CLI 1.11.9 の公式 Windows ZIP を取得し、固定した SHA-256 を照合して `offline/quarto/` に展開します。配布版の Tauri は同梱 R を直接起動し、同梱 Quarto のパスを `SHINYTAURI_QUARTO` で mirai デーモンに引き継ぎます。開発時は `nix develop` が用意する `quarto` を使用します。[Quarto CLI の公式リリース](https://github.com/quarto-dev/quarto-cli/releases/tag/v1.11.9)
+Quarto を使用する場合は Quarto CLI 1.11.9 の公式 Windows ZIP を取得し、固定した SHA-256 を照合して `offline/quarto/` に展開します。配布版の Tauri は同梱 R を直接起動し、同梱 Quarto のパスを `SHINYTAURI_QUARTO` でアプリに渡します。開発時は `nix develop` が用意する `quarto` を使用します。[Quarto CLI の公式リリース](https://github.com/quarto-dev/quarto-cli/releases/tag/v1.11.9)
 
 Shiny がループバックの空きポートで待ち受けてから、その URL をウィンドウに表示します。デスクトップアプリを閉じると Windows のジョブオブジェクトが R と mirai の子プロセスを終了します。起動に失敗した場合はウィンドウタイトルに表示されるログを確認してください。
 
@@ -96,11 +114,12 @@ Shiny がループバックの空きポートで待ち受けてから、その U
 
 | コマンド | 実行内容 |
 | --- | --- |
-| `mise run test` | Rhino の単体テスト、shinytest2 のブラウザーテスト、Tauri の nextest を並列実行 |
-| `mise run test-full` | 同じ3系統で重いテストも実行 |
+| `mise run test:bundle` | Rhino と最小 Shiny アプリの配布ファイルおよび実行時依存を検証 |
+| `mise run test` | Rhino の単体テスト、shinytest2 のブラウザーテスト、Tauri の nextest、配布構成テストを並列実行 |
+| `mise run test-full` | 同じテストで重いケースも実行 |
 | `mise run QA-ci` | `QA` と `test` |
 | `mise run QA-full` | `QA` と `test-full` |
 
 通常のブラウザーテストは、カウンターの操作と、レポート作成中の入力変更・ダウンロード内容を確認します。重いテストでは10万回のサイコロ集計を起動し、実行中の応答と完了後の結果を確認します。`test-full` は `SHINYTAURI_HEAVY_TESTS=1` を設定して `test` を呼び出します。個別に試す場合は、たとえば `env SHINYTAURI_HEAVY_TESTS=1 mise run test:shinytest2` を実行します。
 
-R のテストは `rhino/tests/testthat/` に置きます。`test-shinytest2*.R` を `test:shinytest2`、それ以外を `test:testthat` が実行します。重いケースには `testthat::skip_if_not(Sys.getenv("SHINYTAURI_HEAVY_TESTS") == "1")` を付けます。Rust では重いテストに `#[ignore]` を付けると、同じ環境変数で `test:tauri` が実行対象に加えます。
+R のテストは `src-shiny/tests/testthat/` に置きます。`test-shinytest2*.R` を `test:shinytest2`、それ以外を `test:testthat` が実行します。重いケースには `testthat::skip_if_not(Sys.getenv("SHINYTAURI_HEAVY_TESTS") == "1")` を付けます。Rust では重いテストに `#[ignore]` を付けると、同じ環境変数で `test:tauri` が実行対象に加えます。

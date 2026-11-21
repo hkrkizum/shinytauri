@@ -53,11 +53,18 @@ fn serve(window: &WebviewWindow, payload: &Path, log: &File) -> Result<()> {
     let library = payload.join("library");
     let bin = home.join("bin/x64");
     let job = process_job()?;
-    let mut child = Command::new(bin.join("Rterm.exe"))
-        .args(["--vanilla", "--slave", "-f", "serve-bundled.R"])
-        .current_dir(payload.join("rhino"))
+    let mut command = Command::new(bin.join("Rterm.exe"));
+    let quarto = payload.join("quarto/bin/quarto.exe");
+    if quarto.is_file() {
+        command.env("SHINYTAURI_QUARTO", quarto);
+    } else {
+        command.env_remove("SHINYTAURI_QUARTO");
+    }
+    let mut child = command
+        .args(["--vanilla", "--slave", "-f"])
+        .arg(payload.join("serve-bundled.R"))
+        .current_dir(payload.join("app"))
         .env("R_HOME", &home)
-        .env("SHINYTAURI_QUARTO", payload.join("quarto/bin/quarto.exe"))
         .env("R_LIBS", &library)
         .env("R_LIBS_USER", &library)
         .env("R_LIBS_SITE", &library)
@@ -122,7 +129,7 @@ pub fn start(app: &mut tauri::App) -> Result<()> {
     let payload = app.path().resource_dir()?.join("offline");
     let logs = app.path().app_log_dir()?;
     fs::create_dir_all(&logs)?;
-    let path = logs.join(format!("rhino-{}.log", std::process::id()));
+    let path = logs.join(format!("shiny-{}.log", std::process::id()));
     let mut log = OpenOptions::new()
         .create(true)
         .truncate(true)
@@ -132,10 +139,10 @@ pub fn start(app: &mut tauri::App) -> Result<()> {
         if let Err(error) = serve(&window, &payload, &log) {
             let _ = writeln!(log, "{error}");
             let _ = window.set_title(&format!(
-                "Rhino を起動・実行できませんでした — {}",
+                "Shiny アプリを起動・実行できませんでした — {}",
                 path.display()
             ));
-            let _ = window.eval("document.body.textContent = 'Rhino が停止しました。ウィンドウタイトルのログを確認してください。'");
+            let _ = window.eval("document.body.textContent = 'Shiny アプリが停止しました。ウィンドウタイトルのログを確認してください。'");
         }
     });
     Ok(())

@@ -102,17 +102,13 @@
               pkgsCross.mingwW64.stdenv.cc
               cargo-tauri
               nsis
-              (rWrapper.override {
-                packages = with rPackages; [
-                  RcppTOML
-                  jsonlite
-                ];
-              })
+              rig
               nushell
               mise
             ];
             env = {
               SHINYTAURI_WINDOWS_SHELL = "1";
+              R_LD_LIBRARY_PATH = "$ORIGIN/../../lib";
               NIX_LDFLAGS_x86_64_w64_mingw32 = "-L${pkgs.pkgsCross.mingwW64.windows.pthreads}/lib";
               CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER = "x86_64-w64-mingw32-gcc";
             };
@@ -127,7 +123,7 @@
             ++ fontPackagesFor pkgs;
             shellHook = ''
               export CODEX_HOME="$PWD/.codex"
-              export PATH="$PWD/rhino/.rvenv/bin:$PATH:$HOME/.local/bin"
+              export PATH="$PWD/src-shiny/.rvenv/bin:$PATH:$HOME/.local/bin"
               # rig's R needs its own libR.so. Adding the host libc directory
               # to LD_LIBRARY_PATH would also load it into Nix subprocesses.
               export R_LD_LIBRARY_PATH='$ORIGIN/../../lib'

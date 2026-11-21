@@ -78,8 +78,7 @@ stage_quarto <- function(stage, payload) {
 }
 
 stage_packages <- function(target, stage, payload) {
-  packages <- Filter(function(p) "main" %in% p$groups, target$packages)
-  stopifnot(length(packages) > 0L)
+  packages <- target$packages
   urls <- vapply(
     packages,
     function(p) {
@@ -118,31 +117,90 @@ stage_packages <- function(target, stage, payload) {
   )
 }
 
-build_windows <- function() {
-  options(timeout = max(120L, getOption("timeout")))
-  lock <- RcppTOML::parseTOML("rhino/rproj.lock")
+read_bundle <- function(path) {
+  spec <- RcppTOML::parseTOML(path)
+  base <- dirname(path)
+  for (key in c("app", "lock")) {
+    value <- spec[[key]]
+    if (!is.character(value) || length(value) != 1L || !nzchar(value)) {
+      stop("Missing ", key, " in ", path)
+    }
+    spec[[key]] <- normalizePath(file.path(base, value), mustWork = TRUE)
+  }
+  if (!dir.exists(spec$app)) {
+    stop("Expected app directory: ", spec$app)
+  }
+  files <- spec$files
+  if (
+    !is.character(files) ||
+      !length(files) ||
+      any(!nzchar(files) | grepl("[:\\\\]|^/|/$|//|(^|/)\\.{1,2}(/|$)", files))
+  ) {
+    stop("Expected relative app file or directory names in ", path)
+  }
+  spec$quarto <- spec$quarto %||% FALSE
+  if (!identical(spec$quarto, TRUE) && !identical(spec$quarto, FALSE)) {
+    stop("Expected a boolean for quarto in ", path)
+  }
+  spec
+}
+
+windows_target <- function(path) {
+  lock <- RcppTOML::parseTOML(path)
   targets <- Filter(function(t) identical(t$platform, platform), lock$targets)
-  stopifnot(length(targets) == 1L)
+  if (length(targets) != 1L) {
+    stop("Expected one Windows x64 target in ", path)
+  }
   target <- targets[[1L]]
+  target$packages <- Filter(function(p) "main" %in% p$groups, target$packages)
+  packages <- vapply(target$packages, function(p) p$package, character(1))
+  if (!"shiny" %in% packages) {
+    stop("Missing Shiny runtime dependency in ", path)
+  }
+  target
+}
+
+stage_app <- function(spec, dest) {
+  stopifnot(dir.create(dest, recursive = TRUE))
+  for (relative in spec$files) {
+    source <- file.path(spec$app, relative)
+    if (!file.exists(source)) {
+      stop("Missing app resource: ", source)
+    }
+    parent <- dirname(file.path(dest, relative))
+    dir.create(parent, recursive = TRUE, showWarnings = FALSE)
+    if (
+      startsWith(
+        normalizePath(dest, winslash = "/"),
+        paste0(normalizePath(source, winslash = "/"), "/")
+      )
+    ) {
+      stop("App resource contains the build directory: ", source)
+    }
+    if (!file.copy(source, parent, recursive = dir.exists(source))) {
+      stop("Could not stage app resource: ", source)
+    }
+  }
+}
+
+build_windows <- function(profile) {
+  options(timeout = max(120L, getOption("timeout")))
+  spec <- read_bundle(profile)
+  target <- windows_target(spec$lock)
 
   dir.create("src-tauri/target", recursive = TRUE, showWarnings = FALSE)
   stage <- tempfile("offline-", tmpdir = "src-tauri/target")
   stopifnot(dir.create(stage))
   on.exit(unlink(stage, recursive = TRUE), add = TRUE)
   payload <- file.path(stage, "payload")
-  app <- file.path(payload, "rhino")
-  stopifnot(dir.create(app, recursive = TRUE))
-
+  stage_app(spec, file.path(payload, "app"))
   stage_runtime(target, stage, payload)
-  stage_quarto(stage, payload)
+  if (spec$quarto) {
+    stage_quarto(stage, payload)
+  }
   stage_packages(target, stage, payload)
   stopifnot(
-    file.copy("rhino/app", app, recursive = TRUE),
-    all(file.copy(
-      file.path("rhino", c("app.R", "rhino.yml", "config.yml")),
-      app
-    )),
-    file.copy("scripts/serve-bundled.R", app),
+    file.copy("scripts/serve-bundled.R", payload),
     file.copy("LICENSE", payload)
   )
 
@@ -151,8 +209,11 @@ build_windows <- function() {
     file.path("target", basename(stage), "payload")
   )
   config <- file.path(stage, "bundle.json")
+  settings <- list(bundle = list(resources = resources))
+  settings$productName <- spec$productName
+  settings$identifier <- spec$identifier
   jsonlite::write_json(
-    list(bundle = list(resources = resources)),
+    settings,
     config,
     auto_unbox = TRUE
   )
@@ -161,6 +222,9 @@ build_windows <- function() {
   } else {
     "x86_64-pc-windows-gnu"
   }
+  # Tauri shares its NSIS work directory across all apps for this target.
+  bundle_lock <- filelock::lock("src-tauri/target/build-windows.lock")
+  on.exit(filelock::unlock(bundle_lock), add = TRUE)
   status <- system2(
     "cargo",
     c(
@@ -179,4 +243,10 @@ build_windows <- function() {
   if (status != 0L) stop("cargo tauri build failed with status ", status)
 }
 
-build_windows()
+if (sys.nframe() == 0L) {
+  args <- commandArgs(trailingOnly = TRUE)
+  if (length(args) > 1L) {
+    stop("Expected at most one bundle TOML path")
+  }
+  build_windows(if (length(args)) args[[1L]] else "bundles/rhino.toml")
+}

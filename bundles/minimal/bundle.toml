@@ -1,0 +1,5 @@
+app         = "../../examples/minimal"
+files       = ["app.R", "www"]
+identifier  = "io.github.hkrkizum.shinytauri.minimal"
+lock        = "rproj.lock"
+productName = "shinytauri-minimal"

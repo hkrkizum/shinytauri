@@ -1,0 +1,4 @@
+app    = "../src-shiny"
+files  = ["app", "app.R", "config.yml", "rhino.yml"]
+lock   = "../src-shiny/rproj.lock"
+quarto = true

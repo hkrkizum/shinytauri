@@ -1,0 +1,10 @@
+# rig rvenv start
+# Everything in .rvenv is machine-specific output of `rig proj sync`; it can
+# be deleted and rebuilt at any time. The committed rvenv shim package lives
+# in .rvenvlib instead.
+/.rvenv/
+# rig rvenv end
+
+# Only the manifest and lock are needed to package the Windows runtime.
+/.Renviron
+/.rvenvlib/

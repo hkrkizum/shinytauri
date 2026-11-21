@@ -5,6 +5,10 @@
 /.rvenv/
 # rig rvenv end
 
+# rig restores the build project's startup files during sync.
+/.Renviron
+/.rvenvlib/
+
 /.codex/
 /.direnv/
 node_modules/
