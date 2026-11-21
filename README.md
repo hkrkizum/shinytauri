@@ -132,7 +132,8 @@ Shiny がループバックの空きポートで待ち受けてから、その U
 
 | Git 操作 | コミット作成前に実行する検証 |
 | --- | --- |
-| 通常の `git commit` | `pre-commit` が `mise run QA` を実行します。 |
+| `main` への直接の `git commit`（`--amend` を含む） | `pre-commit` が QA の実行前に拒否します。変更は `dev` などの作業ブランチでコミットしてから `main` にマージします。 |
+| 作業ブランチでの通常の `git commit` | `pre-commit` が `mise run QA` を実行します。 |
 | `git merge` | `pre-merge-commit` が `mise run QA-full` を実行します。フォーマット、lint、重いケースを含む全テストが成功するとマージコミットを作成します。 |
 | 競合解消後や `git merge --no-commit` 後の `git commit` | `pre-commit` が進行中のマージを検出し、同じ `QA-full` を実行します。 |
 
