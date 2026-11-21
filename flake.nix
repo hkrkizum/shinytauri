@@ -111,8 +111,11 @@
               nushell
               mise
             ];
-            env.NIX_LDFLAGS_x86_64_w64_mingw32 = "-L${pkgs.pkgsCross.mingwW64.windows.pthreads}/lib";
-            env.CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER = "x86_64-w64-mingw32-gcc";
+            env = {
+              SHINYTAURI_WINDOWS_SHELL = "1";
+              NIX_LDFLAGS_x86_64_w64_mingw32 = "-L${pkgs.pkgsCross.mingwW64.windows.pthreads}/lib";
+              CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER = "x86_64-w64-mingw32-gcc";
+            };
           };
           default = pkgs.mkShell {
             env.RIG_MODE = "user";

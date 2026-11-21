@@ -158,4 +158,10 @@ run         = "cargo tauri dev"
 
 [tasks."build:windows"]
 description = "Bundle portable R, Quarto and locked R packages in an offline Windows installer"
-run         = "Rscript --vanilla scripts/build-windows.R"
+run = '''
+if $nu.os-info.name == "linux" and $env.SHINYTAURI_WINDOWS_SHELL? != "1" {
+  ^nix develop .#windows -c Rscript --vanilla scripts/build-windows.R
+} else {
+  ^Rscript --vanilla scripts/build-windows.R
+}
+'''

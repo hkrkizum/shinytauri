@@ -41,11 +41,11 @@ Shiny は起動時に mirai のローカルデーモンを4つ立ち上げます
 
 ### ビルド
 
-ネットに接続できるビルド機で、リポジトリのルートから実行します。x86_64 Linux では、クロスコンパイル用の Nix シェルに Rust の Windows ターゲット、MinGW-w64、NSIS、R とビルド用 R パッケージ、mise が含まれます。
+ネットに接続できるビルド機で、リポジトリのルートから実行します。x86_64 Linux では、mise がクロスコンパイル用の Nix シェルを起動します。このシェルには Rust の Windows ターゲット、MinGW-w64、NSIS、R とビルド用 R パッケージが含まれます。
 
 ```sh
-nix develop .#windows -c mise trust
-nix develop .#windows -c mise run build:windows
+mise trust
+mise run build:windows
 ```
 
 Windows x64 でネイティブビルドする場合は、Visual Studio Build Tools の「C++ によるデスクトップ開発」と Windows SDK、rustup（x64 MSVC）、R 4.6.2（`Rscript` に PATH を通す）、Nushell、mise を準備します。PowerShell で次を実行してください。
