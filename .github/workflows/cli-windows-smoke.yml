@@ -60,23 +60,21 @@ jobs:
           if ($env:FIXTURE -eq 'minimal') {
             Copy-Item 'examples/minimal' $app -Recurse
             Copy-Item 'bundles/minimal/rproj.lock' $app
-            Set-Location $caller
-            & $cli init $app --id org.example.minimal
-            & $cli build $app
           } else {
             Copy-Item 'src-shiny' $app -Recurse
-            $profile = Join-Path $caller '配布.toml'
-            @(
-              'app = "shinytauri-smoke-rhino"'
-              'files = ["app.R", "app", "config.yml", "rhino.yml"]'
-              'lock = "shinytauri-smoke-rhino/rproj.lock"'
-              'productName = "shinytauri-smoke-rhino"'
-              'identifier = "org.example.rhino"'
-              'version = "1.2.3"'
-              'title = "Rhino Smoke"'
-              'quarto = true'
-            ) | Set-Content $profile -Encoding utf8NoBOM
-            Set-Location $caller
+          }
+          Set-Location $caller
+          & $cli init $app --id "org.example.$env:FIXTURE"
+          if ($env:FIXTURE -eq 'minimal') {
+            & $cli build $app
+          } else {
+            # Keep init's actual file list and lock path. In particular, a
+            # Rhino app needs app/static/ even if it only contains .gitkeep.
+            $profile = Join-Path $app '配布.toml'
+            $settings = Get-Content (Join-Path $app 'shinytauri.toml') |
+              Where-Object { $_ -notmatch '^\s*(version|title|quarto)\s*=' }
+            $settings + @('version = "1.2.3"', 'title = "Rhino Smoke"', 'quarto = true') |
+              Set-Content $profile -Encoding utf8NoBOM
             & $cli build --config $profile --out-dir $dist
           }
           $setup = @(Get-ChildItem $dist -Filter '*-setup.exe')

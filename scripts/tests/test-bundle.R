@@ -92,6 +92,86 @@ check_custom_layout <- function() {
 
 check_custom_layout()
 
+# Tauri enumerates files, so an empty directory must survive that boundary.
+check_empty_directories <- function() {
+  root <- tempfile("empty directories ")
+  app <- file.path(root, "source")
+  static <- file.path(app, "assets", "static")
+  stopifnot(
+    dir.create(static, recursive = TRUE),
+    dir.create(file.path(app, "legacy", "nested"), recursive = TRUE),
+    file.create(file.path(app, "app.R")),
+    file.copy("bundles/minimal/rproj.lock", root)
+  )
+  on.exit(unlink(root, recursive = TRUE))
+  profile <- file.path(root, "bundle.toml")
+  lines <- c(
+    'app = "source"',
+    'lock = "rproj.lock"',
+    'files = ["app.R", "legacy"]'
+  )
+  writeLines(c(lines, 'emptyDirs = ["assets/static"]'), profile)
+  writeLines("source only", file.path(static, ".secret"))
+  old <- setwd(tempdir())
+  on.exit(setwd(old), add = TRUE, after = FALSE)
+  spec <- read_bundle(profile)
+  check_stage <- function(name) {
+    dest <- file.path(root, name)
+    stage_app(spec, dest)
+    for (dir in c("assets/static", "legacy/nested")) {
+      staged <- file.path(dest, dir)
+      stopifnot(
+        identical(
+          list.files(staged, all.files = TRUE, no.. = TRUE),
+          ".gitkeep"
+        ),
+        file.size(file.path(staged, ".gitkeep")) == 0
+      )
+    }
+  }
+  check_stage("first")
+  writeLines("later addition", file.path(static, "new.txt"))
+  check_stage("second")
+  stopifnot(!file.exists(file.path(static, ".gitkeep")))
+  writeLines("explicit contents", file.path(static, ".gitkeep"))
+  spec$files <- c("app.R", "assets/static/.gitkeep")
+  dest <- file.path(root, "chosen")
+  stage_app(spec, dest)
+  stopifnot(identical(
+    readLines(file.path(dest, "assets/static/.gitkeep")),
+    "explicit contents"
+  ))
+  # Selecting a parent directory in files still opts in to its complete contents.
+  spec$files <- c("app.R", "assets")
+  dest <- file.path(root, "recursive")
+  stage_app(spec, dest)
+  stopifnot(identical(
+    readLines(file.path(dest, "assets/static/new.txt")),
+    "later addition"
+  ))
+  spec$files <- "app.R"
+  expect_bundle_error(
+    stage_app(spec, file.path(root, "collision"), file.path(static, "dist")),
+    "output directory"
+  )
+  for (bad in c("missing", "app.R")) {
+    spec$emptyDirs <- bad
+    expect_bundle_error(
+      stage_app(spec, file.path(root, paste0("bad-", bad))),
+      "directory"
+    )
+  }
+  writeLines(c(lines, 'emptyDirs = ["../outside"]'), profile)
+  expect_bundle_error(read_bundle(profile), "relative")
+  if (.Platform$OS.type != "windows") {
+    stopifnot(file.symlink(static, file.path(app, "shortcut")))
+    spec$emptyDirs <- "shortcut"
+    expect_bundle_error(stage_app(spec, file.path(root, "symlink")), "link")
+  }
+}
+
+check_empty_directories()
+
 # Exercise an entire build from an unrelated working directory. Only the large
 # downloads and the native compiler are substituted; real app files, TOML,
 # JSON and the published installer all cross the same filesystem boundaries.
@@ -157,6 +237,25 @@ check_external_build <- function() {
     identical(list.files(output), basename(published)),
     !dir.exists(file.path(project, ".rvenv"))
   )
+  # The project itself is a valid output directory. Protect a selected source
+  # file if its name matches the actual installer produced by Tauri.
+  subject$build_windows(profile, project, engine)
+  in_project <- file.path(project, basename(published))
+  stopifnot(identical(readLines(in_project), "new"))
+  writeLines("source", in_project)
+  selected <- sub(
+    '"app.R"',
+    paste0('"app.R", "', basename(published), '"'),
+    lines,
+    fixed = TRUE
+  )
+  writeLines(selected, profile)
+  expect_bundle_error(
+    subject$build_windows(profile, project, engine),
+    "overwrite"
+  )
+  stopifnot(identical(readLines(in_project), "source"))
+  writeLines(lines, profile)
   subject$run_tauri <- function(...) NULL
   stopifnot(
     inherits(

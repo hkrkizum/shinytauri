@@ -128,13 +128,21 @@ read_bundle <- function(path) {
   if (!dir.exists(spec$app)) {
     stop("Expected app directory: ", spec$app)
   }
-  files <- spec$files
-  if (
-    !is.character(files) ||
-      !length(files) ||
-      any(!nzchar(files) | grepl("[:\\\\]|^/|/$|//|(^|/)\\.{1,2}(/|$)", files))
-  ) {
-    stop("Expected relative app file or directory names in ", path)
+  for (key in c("files", "emptyDirs")) {
+    entries <- spec[[key]]
+    if (key == "emptyDirs" && is.null(entries)) {
+      next
+    }
+    if (
+      !is.character(entries) ||
+        !length(entries) ||
+        any(
+          !nzchar(entries) |
+            grepl("[:\\\\]|^/|/$|//|(^|/)\\.{1,2}(/|$)", entries)
+        )
+    ) {
+      stop("Expected relative app paths for ", key, " in ", path)
+    }
   }
   spec$quarto <- spec$quarto %||% FALSE
   if (!identical(spec$quarto, TRUE) && !identical(spec$quarto, FALSE)) {
@@ -234,7 +242,7 @@ within_path <- function(path, directory) {
   path == directory || startsWith(path, paste0(directory, "/"))
 }
 
-copy_resource <- function(source, destination) {
+copy_resource <- function(source, destination, directory_only = FALSE) {
   link <- Sys.readlink(source)
   resolved <- absolute_path(source)
   if (
@@ -248,13 +256,16 @@ copy_resource <- function(source, destination) {
     stop("Missing app resource: ", source)
   }
   if (dir.exists(source)) {
-    if (file.access(source, 4L) != 0L) {
-      stop("Unreadable app directory: ", source)
-    }
     if (
       !dir.exists(destination) && !dir.create(destination, recursive = TRUE)
     ) {
       stop("Could not stage app directory: ", source)
+    }
+    if (directory_only) {
+      return(invisible(NULL))
+    }
+    if (file.access(source, 4L) != 0L) {
+      stop("Unreadable app directory: ", source)
     }
     children <- list.files(source, all.files = TRUE, no.. = TRUE)
     for (child in children) {
@@ -274,8 +285,9 @@ copy_resource <- function(source, destination) {
 stage_app <- function(spec, dest, output = NULL) {
   stopifnot(dir.create(dest, recursive = TRUE))
   dest <- absolute_path(dest)
-  for (relative in spec$files) {
-    source <- file.path(absolute_path(spec$app), relative)
+  app <- absolute_path(spec$app)
+  for (relative in unique(c(spec$files, spec$emptyDirs))) {
+    source <- file.path(app, relative)
     resolved <- absolute_path(source)
     if (within_path(dest, resolved)) {
       stop("App resource contains the build directory: ", source)
@@ -283,7 +295,20 @@ stage_app <- function(spec, dest, output = NULL) {
     if (!is.null(output) && within_path(output, resolved)) {
       stop("App resource overlaps the output directory: ", source)
     }
-    copy_resource(source, file.path(dest, relative))
+    if (relative %in% spec$emptyDirs && !dir.exists(source)) {
+      stop("Expected existing app directory: ", source)
+    }
+    copy_resource(
+      source,
+      file.path(dest, relative),
+      directory_only = !relative %in% spec$files
+    )
+  }
+  # NSIS installs files. An empty staged leaf needs a file to carry its path.
+  for (directory in list.dirs(dest)) {
+    if (!length(list.files(directory, all.files = TRUE, no.. = TRUE))) {
+      stopifnot(file.create(file.path(directory, ".gitkeep")))
+    }
   }
   # shinyAppDir accepts app.R or server.R and looks them up case-insensitively.
   entry <- list.files(
@@ -329,7 +354,7 @@ run_tauri <- function(engine, config, triple, target_dir) {
   if (status != 0L) stop("cargo tauri build failed with status ", status)
 }
 
-publish_installer <- function(target_dir, triple, output) {
+publish_installer <- function(target_dir, triple, output, sources) {
   nsis <- file.path(target_dir, triple, "release/bundle/nsis")
   installer <- list.files(nsis, pattern = "[.]exe$", full.names = TRUE)
   if (length(installer) != 1L || file.info(installer)$size == 0) {
@@ -347,6 +372,16 @@ publish_installer <- function(target_dir, triple, output) {
   part <- tempfile(".shinytauri-", tmpdir = output)
   on.exit(unlink(part))
   file <- file.path(output, basename(installer))
+  if (
+    file.exists(file) &&
+      any(vapply(
+        sources,
+        function(source) within_path(file, source),
+        logical(1)
+      ))
+  ) {
+    stop("Installer would overwrite an app resource: ", file)
+  }
   if (!file.copy(installer, part) || !file.rename(part, file)) {
     stop("Could not publish installer to ", file)
   }
@@ -413,7 +448,12 @@ build_windows <- function(profile, output = NULL, engine = getwd()) {
     # Keep this build's bundle separate, even when earlier installers exist.
     cargo_dir <- file.path(stage, "cargo")
     run_tauri(engine, config, triple, cargo_dir)
-    return(publish_installer(cargo_dir, triple, output))
+    return(publish_installer(
+      cargo_dir,
+      triple,
+      output,
+      file.path(spec$app, spec$files)
+    ))
   }
   # Legacy mise builds share the target tree and leave the installer there.
   bundle_lock <- filelock::lock(file.path(target_dir, "build-windows.lock"))

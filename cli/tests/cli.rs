@@ -245,3 +245,66 @@ fn a_failed_environment_restore_stops_the_build_and_cleans_the_engine() {
     assert!(!Path::new(calls.trim()).exists());
     assert!(!root.path().join("dist").exists());
 }
+
+#[test]
+fn init_preserves_the_rhino_demo_static_resource_directory() {
+    let demo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../src-shiny");
+    let app = tempdir().unwrap();
+    let static_dir = app.path().join("app/static");
+    fs::create_dir_all(&static_dir).unwrap();
+    for file in [
+        "app.R",
+        "rhino.yml",
+        "config.yml",
+        "app/static/.gitkeep",
+        "rproj.lock",
+    ] {
+        fs::copy(demo.join(file), app.path().join(file)).unwrap();
+    }
+    fs::write(static_dir.join(".Renviron"), "PRIVATE=value").unwrap();
+    let private = app.path().join("www");
+    fs::create_dir(&private).unwrap();
+    fs::write(private.join(".gitkeep"), "not a placeholder").unwrap();
+    let result = cli(app.path(), &["init", "--id", "org.example.rhino"]);
+    assert!(result.status.success(), "{result:?}");
+    let settings = spec(app.path());
+    let files: Vec<_> = settings["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(files, ["app.R", "config.yml", "rhino.yml"]);
+    let folders: Vec<_> = settings["emptyDirs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(folders, ["app/static", "www"]);
+}
+
+#[test]
+fn init_records_empty_directories_separately_from_files() {
+    let app = tempdir().unwrap();
+    fs::write(app.path().join("app.R"), "").unwrap();
+    fs::write(app.path().join("rhino.yml"), "sass: r").unwrap();
+    for dir in ["app/static", "data/private", "www"] {
+        fs::create_dir_all(app.path().join(dir)).unwrap();
+    }
+    fs::write(app.path().join("data/private/.env"), "credentials").unwrap();
+    let init = cli(app.path(), &["init", "--id", "org.example.empty"]);
+    assert!(init.status.success(), "{init:?}");
+    fs::write(app.path().join("www/future.csv"), "user data").unwrap();
+    let settings = spec(app.path());
+    let strings = |key: &str| {
+        settings[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(strings("files"), ["app.R", "rhino.yml"]);
+    assert_eq!(strings("emptyDirs"), ["app/static", "data/private", "www"]);
+}

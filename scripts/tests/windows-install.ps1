@@ -26,6 +26,9 @@ try {
         if ($key.DisplayName -ne $product) { throw "Missing $product registration" }
         if ($kind -eq 'rhino' -and $key.DisplayVersion -ne '1.2.3') { throw 'Wrong Rhino release version' }
         $dir = $key.InstallLocation.Trim('"')
+        if ($kind -eq 'rhino' -and !(Test-Path "$dir/offline/app/app/static" -PathType Container)) {
+            throw 'The installed Rhino app is missing its static resource directory'
+        }
         $hosts[$kind] = (Get-Item (Join-Path $dir $key.MainBinaryName)).FullName
         foreach ($exe in Get-ChildItem $dir -Filter '*.exe' -File -Recurse) {
             Block-External $exe.FullName

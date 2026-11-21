@@ -28,8 +28,15 @@ fn check_identifier(id: &str) -> Result<()> {
     Ok(())
 }
 
-fn collect_tree(app: &Path, folder: &Path, files: &mut Vec<String>) -> Result<()> {
-    for child in fs::read_dir(folder)? {
+#[derive(Default)]
+struct Resources {
+    files: Vec<String>,
+    empty_dirs: Vec<String>,
+}
+
+fn collect_tree(app: &Path, folder: &str, resources: &mut Resources) -> Result<()> {
+    let mut empty = true;
+    for child in fs::read_dir(app.join(folder))? {
         let child = child?;
         let name = child.file_name();
         let name = name.to_str().ok_or("App resources must have UTF-8 names")?;
@@ -37,20 +44,24 @@ fn collect_tree(app: &Path, folder: &Path, files: &mut Vec<String>) -> Result<()
             continue;
         }
         let kind = child.file_type()?;
-        let file = child.path();
+        let relative = format!("{folder}/{name}");
         if kind.is_dir() {
-            collect_tree(app, &file, files)?;
+            collect_tree(app, &relative, resources)?;
+            empty = false;
         } else if kind.is_file() {
-            let relative = file.strip_prefix(app)?;
-            let components: Vec<_> = relative.iter().map(|part| part.to_str().unwrap()).collect();
-            files.push(components.join("/"));
+            resources.files.push(relative);
+            empty = false;
         }
+    }
+    if empty {
+        resources.empty_dirs.push(folder.to_owned());
     }
     Ok(())
 }
 
-fn resources(app: &Path) -> Result<Vec<String>> {
-    let mut files = Vec::new();
+fn resources(app: &Path) -> Result<Resources> {
+    let mut resources = Resources::default();
+    let files = &mut resources.files;
     for name in ["app.R", "ui.R", "server.R", "global.R", "rhino.yml"] {
         if entry(&app.join(name))?.is_some_and(|kind| kind.is_file()) {
             files.push(name.to_owned());
@@ -70,11 +81,12 @@ fn resources(app: &Path) -> Result<Vec<String>> {
         }
         let path = app.join(folder);
         if entry(&path)?.is_some_and(|kind| kind.is_dir()) {
-            collect_tree(app, &path, &mut files)?;
+            collect_tree(app, folder, &mut resources)?;
         }
     }
-    files.sort();
-    Ok(files)
+    resources.files.sort();
+    resources.empty_dirs.sort();
+    Ok(resources)
 }
 
 fn validate_lock(path: &Path) -> Result<()> {
@@ -124,7 +136,7 @@ pub(crate) fn initialize(app: &Path, id: &str) -> Result<()> {
     if entry(&config)?.is_some() {
         return Err(format!("{} already exists.", config.display()).into());
     }
-    let files = resources(&app)?;
+    let resources = resources(&app)?;
     let name = app
         .file_name()
         .and_then(|f| f.to_str())
@@ -152,7 +164,10 @@ pub(crate) fn initialize(app: &Path, id: &str) -> Result<()> {
     ] {
         table.insert(key.into(), value.into());
     }
-    table.insert("files".into(), files.into());
+    table.insert("files".into(), resources.files.into());
+    if !resources.empty_dirs.is_empty() {
+        table.insert("emptyDirs".into(), resources.empty_dirs.into());
+    }
     let document = toml::to_string_pretty(&table)?;
     let support = app.join(".shinytauri");
     if use_minimal {
