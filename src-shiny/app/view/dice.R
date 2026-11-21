@@ -18,11 +18,21 @@ box::use(
   ]
 )
 
-trials <- c("1,000 回" = 1000L, "10,000 回" = 10000L, "100,000 回" = 100000L)
+box::use(.. / types[typed, Tag, Reactive])
 
+box::use(model = .. / logic / dice)
+
+trials <- stats::setNames(
+  model$trial_sizes,
+  paste(format(model$trial_sizes, big.mark = ",", trim = TRUE), "回")
+)
+
+#' Display the simulation controls and distribution plot
+#' @param id Shiny module ID.
+#' @return A Bootstrap card.
 #' @export
 ui <- function(id) {
-  ns <- NS(id)
+  ns <- NS(typed(id, S7::class_character))
   card(
     card_header(tags$h2(class = "h5 my-1", "サイコロのシミュレーション")),
     card_body(
@@ -50,67 +60,89 @@ ui <- function(id) {
       ),
       tags$div(`aria-live` = "polite", textOutput(ns("summary")))
     )
-  )
+  ) |>
+    typed(Tag)
 }
 
+#' Run simulations and expose their results
+#' @param id Shiny module ID.
+#' @return A reactive DiceDistribution once a simulation succeeds.
 #' @export
 server <- function(id) {
-  moduleServer(id, function(input, output, session) {
-    task <- ExtendedTask$new(function(n) {
-      mirai(
-        {
-          # 集計中にカウンターを試せるよう、デモ用の待ち時間を設ける。
-          Sys.sleep(2)
-          sums <- sample.int(6L, n, replace = TRUE) +
-            sample.int(6L, n, replace = TRUE)
-          tabulate(sums - 1L, nbins = 11L)
-        },
-        n = n
-      )
-    }) |>
-      bind_task_button("roll")
-
-    observeEvent(input$roll, {
-      req(input$trials %in% trials)
-      task$invoke(as.integer(input$trials))
-    })
-
-    output$distribution <- renderPlot(
-      {
-        sums <- 2:12
-        expected <- (6 - abs(sums - 7)) / 36 * 100
-        observed <- if (task$status() == "initial") {
-          numeric(11)
-        } else {
-          prop.table(task$result()) * 100
-        }
-        par(mar = c(2, 3, 0.5, 0.5), fg = "#536963", col.axis = "#435c56")
-        positions <- barplot(
-          observed,
-          names.arg = sums,
-          ylim = c(0, max(20, observed)),
-          col = "#248879",
-          border = NA,
-          axes = FALSE
+  moduleServer(
+    typed(id, S7::class_character),
+    function(input, output, session) {
+      root <- normalizePath(box::file("../.."))
+      task <- ExtendedTask$new(function(n) {
+        mirai(
+          {
+            options(box.path = root)
+            box::use(app / logic / dice)
+            # 集計中にカウンターを試せるよう、デモ用の待ち時間を設ける。
+            Sys.sleep(2)
+            dice$roll(n)@counts
+          },
+          root = root,
+          n = n
         )
-        ticks <- seq(0, max(20, observed), by = 5)
-        axis(2, at = ticks, labels = paste0(ticks, "%"), las = 1, tick = FALSE)
-        lines(positions, expected, type = "b", pch = 16, col = "#253d38")
-      },
-      alt = "サイコロ2個の出目の合計ごとに、実測と理論の出現率を示すグラフ"
-    )
+      }) |>
+        bind_task_button("roll")
 
-    output$summary <- renderText({
-      if (task$status() == "initial") {
-        return("試行回数を選んでサイコロを振ってください。")
-      }
-      counts <- task$result()
-      sprintf(
-        "%s 回のうち、合計が 7 になった割合は %.1f%% でした。",
-        format(sum(counts), big.mark = ","),
-        100 * counts[6L] / sum(counts)
+      observeEvent(input$roll, {
+        req(input$trials %in% trials)
+        task$invoke(as.integer(input$trials))
+      })
+
+      distribution <- reactive(model$DiceDistribution(counts = task$result()))
+
+      output$distribution <- renderPlot(
+        {
+          observed <- if (task$status() == "initial") {
+            numeric(length(model$sums))
+          } else {
+            distribution()@observed_percent
+          }
+          par(mar = c(2, 3, 0.5, 0.5), fg = "#536963", col.axis = "#435c56")
+          positions <- barplot(
+            observed,
+            names.arg = model$sums,
+            ylim = c(0, max(20, observed)),
+            col = "#248879",
+            border = NA,
+            axes = FALSE
+          )
+          ticks <- seq(0, max(20, observed), by = 5)
+          axis(
+            2,
+            at = ticks,
+            labels = paste0(ticks, "%"),
+            las = 1,
+            tick = FALSE
+          )
+          lines(
+            positions,
+            model$expected_percent,
+            type = "b",
+            pch = 16,
+            col = "#253d38"
+          )
+        },
+        alt = "サイコロ2個の出目の合計ごとに、実測と理論の出現率を示すグラフ"
       )
-    })
-    reactive(if (task$status() == "success") task$result())
-  })
+
+      output$summary <- renderText({
+        if (task$status() == "initial") {
+          return("試行回数を選んでサイコロを振ってください。")
+        }
+        result <- distribution()
+        sprintf(
+          "%s 回のうち、合計が 7 になった割合は %.1f%% でした。",
+          format(result@total, big.mark = ","),
+          result@observed_percent[[6L]]
+        )
+      })
+      reactive(if (task$status() == "success") distribution())
+    }
+  ) |>
+    typed(Reactive)
 }

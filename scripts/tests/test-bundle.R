@@ -5,6 +5,11 @@ check_bundle <- function(profile, included, excluded, quarto) {
   target <- windows_target(spec$lock)
   packages <- vapply(target$packages, function(p) p$package, character(1))
   stopifnot(
+    all(vapply(
+      target$packages,
+      function(p) isTRUE(p$binary) && endsWith(p$sources[[1L]], ".zip"),
+      logical(1)
+    )),
     "shiny" %in% packages,
     !any(c("RcppTOML", "shinytest2") %in% packages),
     spec$quarto == quarto

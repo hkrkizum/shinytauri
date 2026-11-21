@@ -8,24 +8,33 @@ format:
     scrolling: true
 ---
 
+```{r}
+#| include: false
+snapshot <- readRDS("snapshot.rds")
+options(box.path = snapshot$root)
+box::use(app / logic / dice[DiceDistribution], app / view / distribution[distribution_table])
+result <- DiceDistribution(counts = snapshot$counts)
+```
+
 ## Row
 
 ::: {.card title="カウンター"}
-**{{COUNTER}}**
+**`r snapshot$counter`**
 :::
 
 ::: {.card title="試行回数"}
-**{{TRIALS}} 回**
+**`r format(result@total, big.mark = ",", scientific = FALSE)` 回**
 :::
 
 ::: {.card title="合計が 7 になった割合"}
-**{{SEVEN}} %**
+**`r sprintf("%.1f", result@observed_percent[[6L]])` %**
 :::
 
 ## Row
 
 ::: {.card title="サイコロ 2 個の出目の分布"}
-| 合計 | 観測回数 | 観測割合 | 理論割合 |
-|----:|--------:|--------:|--------:|
-{{ROWS}}
+```{r}
+#| echo: false
+distribution_table(result)
+```
 :::

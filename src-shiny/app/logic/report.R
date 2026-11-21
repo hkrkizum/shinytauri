@@ -1,3 +1,5 @@
+box::use(. / dice[DiceDistribution], .. / types[typed])
+
 # Pandoc can put entire stylesheets and ES modules behind data: URLs.
 # Decode these as UTF-8 text; binary image and font URLs stay embedded.
 decode_uri <- function(uri) {
@@ -34,10 +36,31 @@ inline_imports <- function(css) {
   css
 }
 
+#' Inline the text resources of a self-contained Quarto HTML document
+#' @param input Path to the rendered HTML.
+#' @param output Path to the standalone HTML to write.
+#' @return Invisible NULL after writing the document.
 #' @export
 inline_resources <- function(input, output) {
+  # libxml2's HTML parser consumes end-tag-like JavaScript such as /</g.
+  # Keep script bodies verbatim while editing Quarto's generated markup.
+  html <- paste(
+    readLines(
+      typed(input, S7::class_character),
+      encoding = "UTF-8",
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  bodies <- gregexpr(
+    "(?is)<script\\b(?:[^>\"']++|\"[^\"]*\"|'[^']*')*>\\K.*?(?=</script\\s*>)",
+    html,
+    perl = TRUE
+  )
+  scripts <- regmatches(html, bodies)[[1L]]
+  regmatches(html, bodies) <- list(as.character(seq_along(scripts)))
   doc <- xml2::read_html(
-    input,
+    html,
     encoding = "UTF-8",
     options = c("HUGE", "NONET")
   )
@@ -52,54 +75,56 @@ inline_resources <- function(input, output) {
   for (node in xml2::xml_find_all(doc, "//style")) {
     xml2::xml_text(node) <- inline_imports(xml2::xml_text(node))
   }
-  for (node in xml2::xml_find_all(doc, "//script[@src]")) {
+  for (node in xml2::xml_find_all(doc, "//script")) {
     uri <- xml2::xml_attr(node, "src")
-    stopifnot(grepl("^data:(application|text)/javascript[,;]", uri))
-    xml2::xml_attr(node, "src") <- NULL
-    xml2::xml_text(node) <- decode_uri(uri)
+    if (is.na(uri)) {
+      xml2::xml_text(node) <- scripts[[as.integer(xml2::xml_text(node))]]
+    } else {
+      stopifnot(grepl("^data:(application|text)/javascript[,;]", uri))
+      xml2::xml_attr(node, "src") <- NULL
+      xml2::xml_text(node) <- decode_uri(uri)
+    }
   }
-  xml2::write_html(doc, output, encoding = "UTF-8", options = "as_html")
+  xml2::write_html(
+    doc,
+    typed(output, S7::class_character),
+    encoding = "UTF-8",
+    options = "as_html"
+  )
 }
 
+#' Render a snapshot as a standalone Quarto dashboard
+#' @param counter Integer counter value at the time of the request.
+#' @param counts Integer frequencies for sums two through twelve.
+#' @param quarto Path to the Quarto executable.
+#' @return Raw bytes of the standalone HTML file.
 #' @export
 dashboard <- function(counter, counts, quarto) {
-  stopifnot(length(counter) == 1L, length(counts) == 11L, sum(counts) > 0L)
+  typed(counter, S7::class_integer)
+  stopifnot(length(counter) == 1L, !is.na(counter), counter >= 0L)
+  distribution <- DiceDistribution(counts = counts)
+  typed(quarto, S7::class_character)
   work <- tempfile("dice-report-")
   stopifnot(dir.create(work))
   on.exit(unlink(work, recursive = TRUE), add = TRUE)
-  sums <- 2:12
-  n <- sum(counts)
-  rows <- sprintf(
-    "| %d | %d | %.1f %% | %.1f %% |",
-    sums,
-    counts,
-    100 * counts / n,
-    100 * (6 - abs(sums - 7)) / 36
+  saveRDS(
+    list(
+      counter = counter,
+      counts = distribution@counts,
+      root = normalizePath(box::file("../.."))
+    ),
+    file.path(work, "snapshot.rds")
   )
-  qmd <- readLines(box::file("dashboard.qmd"), encoding = "UTF-8")
-  qmd <- sub("{{COUNTER}}", as.character(counter), qmd, fixed = TRUE)
-  qmd <- sub(
-    "{{TRIALS}}",
-    format(n, big.mark = ",", scientific = FALSE),
-    qmd,
-    fixed = TRUE
-  )
-  qmd <- sub(
-    "{{SEVEN}}",
-    sprintf("%.1f", 100 * counts[[6L]] / n),
-    qmd,
-    fixed = TRUE
-  )
-  qmd <- sub("{{ROWS}}", paste(rows, collapse = "\n"), qmd, fixed = TRUE)
-  writeLines(enc2utf8(qmd), file.path(work, "dashboard.qmd"), useBytes = TRUE)
+  stopifnot(file.copy(box::file("../report/dashboard.qmd"), work))
   processx::run(
     quarto,
     c("render", "dashboard.qmd", "--to", "dashboard", "--quiet"),
+    env = c("current", QUARTO_R = R.home("bin")),
     wd = work,
     timeout = 180000,
     cleanup_tree = TRUE
   )
   output <- file.path(work, "download.html")
   inline_resources(file.path(work, "dashboard.html"), output)
-  readBin(output, "raw", n = file.size(output))
+  readBin(output, "raw", n = file.size(output)) |> typed(S7::class_raw)
 }
