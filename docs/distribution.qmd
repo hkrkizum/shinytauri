@@ -26,7 +26,7 @@ title: "Windows での動作確認"
 
 ## インストーラーの中身
 
-[shinyelectron の配布方式](https://github.com/coatless-rpkg/shinyelectron)を参考に、ポータブル R とアプリが使う R ライブラリを別のディレクトリに配置する。ビルド時には [portable-r-windows](https://github.com/portable-r/portable-r-windows/releases) と、同梱する場合は [Quarto の Windows 版](https://github.com/quarto-dev/quarto-cli/releases/tag/v1.11.9)のアーカイブを取得し、あらかじめ登録した SHA-256 と照合する。R パッケージはロックの URL から取得し、展開後の名前とバージョンを照合する。
+[shinyelectron の配布方式](https://github.com/coatless-rpkg/shinyelectron)を参考に、ポータブル R とアプリが使う R ライブラリを別のディレクトリに配置する。CLI は [portable-r-windows の公式リリース](https://github.com/portable-r/portable-r-windows/releases)の SHA-256 を Windows 用ロックに記録し、ビルド時に取得した R の ZIP と照合する。既存の rig ロックに SHA-256 がない場合も、公式の値で照合する。Quarto を同梱するときは [Windows 版 1.11.9](https://github.com/quarto-dev/quarto-cli/releases/tag/v1.11.9) のアーカイブを固定の SHA-256 と照合する。R パッケージはロックの URL から取得し、展開後の名前とバージョンを照合する。
 
 | 配置先 | 用途 |
 | --- | --- |

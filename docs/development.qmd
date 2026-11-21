@@ -31,7 +31,7 @@ nix develop -c mise run setup
 | `mise.toml`、`.githooks/` | セットアップ、QA、ビルド、Git フック |
 | `docs/` | この Quarto マニュアルのソース |
 
-配布用のポータブル R を更新するときは、対応するアプリ用ロックと `scripts/build-windows.R` の SHA-256 も更新する。使用する Windows 配布物は [portable-r-windows](https://github.com/portable-r/portable-r-windows/releases) で確認できる。
+ルートの `rproj.lock` はビルド用 R を固定する。アプリに別の R を同梱するときは[配布用バージョンの選択手順](dependencies.qmd#r-version)でアプリのロックを更新する。
 
 ## デモを開発モードで起動する
 

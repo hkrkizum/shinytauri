@@ -16,6 +16,29 @@ title: "アプリの依存パッケージ"
 | `DESCRIPTION` | `Depends`、`Imports`、`LinkingTo` の宣言から Windows 用ロックを作る。 |
 | いずれもない | `init --package` でパッケージ名を指定する。Shiny とその依存だけで足りる場合は `--package` を省略できる。 |
 
+## 同梱する R を選ぶ {#r-version}
+
+初期化時に `--r-version` で配布用 R のバージョンを指定できる。次は依存定義のない Shiny アプリを R 4.5.3 で配布する例である。
+
+```sh
+shinytauri init . --id jp.example.counter --r-version 4.5.3
+shinytauri lock .
+shinytauri build .
+```
+
+`init` は配布設定に `rVersion = "4.5.3"` を記録する。`lock` はその R で使える Windows x64 用パッケージを解決する。ビルド用ツールが使う R と、利用者に配布する R は別々に管理する。
+
+| 入力 | 同梱する R の決まり方 |
+| --- | --- |
+| `renv.lock` | `R.Version` と同じバージョンを使う。 |
+| `DESCRIPTION` | `Depends: R (== 4.5.3)` のような完全指定はその値を使う。`R (>= 4.5.0)` などの範囲は、選んだバージョンが条件を満たすかの確認に使う。 |
+| rig の `rproj.lock` | Windows x64 ターゲットの `r_version` を使う。Windows x64 用の R が複数登録されていれば、`rVersion` で一つを選ぶ。 |
+| 完全なバージョン指定がない | `rVersion` があればその値を使い、省略時は 4.6.2 を使う。依存定義も指定もない最小アプリには、4.6.2 用のロックが付属する。 |
+
+明示する値は `4.5.3` のように 3 個の整数で指定する。`rVersion` と依存定義の完全指定が食い違う場合や、選んだ R がバージョン制約を満たさない場合はエラーになる。[portable-r-windows のリリース](https://github.com/portable-r/portable-r-windows/releases)に指定したバージョンの Windows x64 ZIP と SHA-256 があり、必要な R パッケージの Windows バイナリも取得できることが条件である。
+
+既存アプリの R を変更するときは、配布設定の `rVersion` と依存定義をそろえる。CLI が管理するロックなら `shinytauri lock .` で `.shinytauri/windows.lock` を作り直してからビルドする。付属の最小ロックを使っていたアプリでは `lock = ".shinytauri/windows.lock"` に変更してから同じ手順を実行する。rig のロックを使うアプリでは、該当する Windows ターゲットを `rig proj lock` で用意する。
+
 ## Linux から rig を使っていないアプリを配布する
 
 次は、Linux の `sales-dashboard/` にあるアプリが CRAN パッケージ `DT` を使い、`renv.lock` も `DESCRIPTION` もない場合の例である。[Linux のビルド環境](installation.qmd)を用意し、次のコマンドを実行する。
@@ -41,7 +64,7 @@ shinytauri lock .
 shinytauri build .
 ```
 
-`init` はアプリ直下の `renv.lock` を検出する。`renv.lock` と `DESCRIPTION` が両方ある場合は `renv.lock` を使う。この方式には R 4.6.2 のロックと `shiny` のレコードが必要である。CLI は各パッケージの名前とバージョンを読み、元のロックと同じバージョンの Windows バイナリを解決する。
+`init` はアプリ直下の `renv.lock` を検出する。`renv.lock` と `DESCRIPTION` が両方ある場合は `renv.lock` を使う。この方式には `R.Version` と、`shiny` を含むパッケージのレコードが必要である。CLI は各パッケージの名前とバージョンを読み、元のロックと同じバージョンの Windows バイナリを解決する。
 
 CLI は `R.Repositories` に記録された URL をすべて確認する。対応するのは `https://cloud.r-project.org` などの所定の CRAN URL と、`https://packagemanager.posit.co/cran/latest` などの所定の公開 Posit Package Manager URL である。各パッケージの `Source` は `Repository` である必要がある。対応 URL を記録した Linux のスナップショットは、パッケージの `Repository` が `RSPM` や `PPM` でも使える。
 
@@ -58,13 +81,13 @@ shinytauri init . --id jp.example.counter
 shinytauri build .
 ```
 
-この場合、CLI は `.shinytauri/rproj.toml` と `.shinytauri/rproj.lock` に同梱の最小構成を展開する。この構成では、ビルド時に配布対象の R スクリプトを調べ、`library()` や `パッケージ名::関数名` などに現れる名前をロックと照合する。パッケージ名を動的に決めるコードや、実行する R Markdown・Quarto 文書を同梱する場合は、実際に必要なパッケージを明示する。たとえば、初期化した後で `DT` を追加する場合は `shinytauri.toml` の `checkMinimal` を削除し、`lock` を `".shinytauri/windows.lock"` に変更して `packages = ["DT"]` を加える。続いて `shinytauri lock .` を実行する。
+この場合、CLI は `.shinytauri/rproj.toml` と `.shinytauri/rproj.lock` に同梱の最小構成を展開する。ビルド時には配布対象の R スクリプトを調べ、`library()` や `パッケージ名::関数名` などに現れる名前をロックと照合する。パッケージ名を動的に決めるコードや、実行する R Markdown・Quarto 文書を同梱する場合は、実際に必要なパッケージを明示する。たとえば、初期化した後で `DT` を追加する場合は `shinytauri.toml` の `checkMinimal` を削除し、`lock` を `".shinytauri/windows.lock"` に変更して `packages = ["DT"]` を加える。続いて `shinytauri lock .` を実行する。
 
 ## 既存の rig ロック
 
 rig のアプリ用ロックを使う場合は、次の条件を満たす `rproj.lock` を指定する。
 
-- Windows x64 ターゲット `x86_64-w64-mingw32` と、CLI が配布できる R バージョン（現在は 4.6.2）がある。
+- Windows x64 ターゲットの `platform` が `x86_64-w64-mingw32` で、その `r_version` に対応するポータブル R を配布できる。
 - `main` グループに `shiny` とアプリの実行時依存がある。
 - 実行用パッケージを、ロックに記録された HTTPS の Windows バイナリ ZIP から取得できる。
 
