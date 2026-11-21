@@ -1,58 +1,84 @@
 # shinytauri
 
-Shiny アプリと R を Windows 用の Tauri 2 インストーラーにまとめるプロジェクトです。既定の配布対象は `src-shiny/` にあるデモです。
+Shiny アプリと R を、オフラインで導入できる Windows 用インストーラーにまとめるプロジェクトです。標準のデモでは、2 個のサイコロを振った結果を集計し、操作できる表を含む Quarto ダッシュボードを HTML 1 ファイルに保存できます。別の Shiny アプリも配布設定 TOML で指定できます。
 
-## 開発用アプリの起動
+## Getting Started — Windows で配布版を使う
 
-リポジトリのルートで `nix develop` に入ります。開発シェルと mise タスクでは `RIG_MODE=user` を設定しています。初回はネットワークに接続し、次を実行してください。
+必要なものは、Microsoft Edge WebView2 Runtime 導入済みの Windows 10/11 x64 PC と、配布担当者が用意した `shinytauri_<バージョン>_x64-setup.exe` です。デモには R・実行用パッケージ・Quarto が同梱されています。インストールからレポートの保存までオフラインで行えます。
+
+1. インストーラーを PC にコピーして実行し、スタートメニューから **shinytauri** を開きます。
+2. 「サイコロ集計」で試行回数を選び、「サイコロを振る」を押します。集計中も「1 を足す」でカウンターを操作できます。
+3. 集計が完了したら「レポート」を開き、「レポートを作成」を押します。作成が完了すると表示される「ダウンロード」をクリックし、`dice-dashboard.html` を保存します。
+4. 保存した HTML をブラウザーで開きます。「合計」や「理論割合 (%)」で分布表を絞り込めます。別の PC で閲覧するときは HTML だけをコピーしてください。
+
+レポートには「レポートを作成」を押した時点のカウンター値と、直近に計算した出目別件数が入ります。作成中の入力変更も次の集計も、保存される値に影響しません。アプリ内のページを移動しても、同じセッションの集計結果とカウンターは保持されます。
+
+## 開発・ビルドに必要なツール
+
+| 用途 | 前提と環境 |
+| --- | --- |
+| Linux で開発・テスト | x86_64 Linux、Git、flakes と `nix-command` が有効な Nix。デスクトップ版の起動にはグラフィカルセッションを使います。 |
+| Linux で Windows 版をビルド | 同じ Git と Nix。専用シェル `.#windows` が Rust の Windows ターゲット、MinGW-w64、NSIS、rig、Nushell、mise を提供します。 |
+| Windows でネイティブビルド | Windows x64、Git、Visual Studio Build Tools（「C++ によるデスクトップ開発」と Windows SDK）、rustup（x64 MSVC）、rig 0.11.1、Nushell、mise、Tauri CLI。下記のビルド手順を参照してください。 |
+
+ソースからの初回セットアップとインストーラーのビルドにはインターネット接続が必要です。Linux の開発シェルには Rust、Tauri CLI、WebKitGTK、rig、Quarto、Chromium、mise、Nushell が含まれます。rig がプロジェクトのロックに合わせて R 4.6.2 と R パッケージを復元します。
+
+### ソースからデモを起動する
+
+x86_64 Linux で次を実行します。`setup` はこのクローンの Git フックを有効にし、デモの R 環境を復元します。
 
 ```sh
-mise run setup:r
-cargo tauri dev
+git clone https://github.com/hkrkizum/shinytauri.git
+cd shinytauri
+nix develop -c mise trust
+nix develop -c mise run setup
+nix develop -c mise run run:tauri
 ```
 
-`cargo tauri dev` は Rhino を `127.0.0.1:3838` で起動し、Tauri のウィンドウに表示します。「1 を足す」を押すと、R がカウントを更新します。ブラウザーだけで開発するときは、代わりに `src-shiny/` で `rig run dev.R` を実行し、同じアドレスを開いてください。どちらも同じポートを使うので、切り替えるときは先に起動した方を終了してください。
+`run:tauri` は `cargo tauri dev` を実行し、デモを Tauri のウィンドウに表示します。ブラウザーで開発する場合は、リポジトリのルートで `nix develop` に入り、`cd src-shiny`、`rig run dev.R` の順に実行して `http://127.0.0.1:3838` を開いてください。いずれも開発時は同じポートを使うため、切り替えるときは起動中の方を終了してください。
 
-Shiny は起動時に mirai のローカルデーモンを4つ立ち上げます。全セッションでこの4つを共有し、アプリの終了時にまとめて停止します。時間のかかる計算は、サーバーモジュールの `shiny::ExtendedTask` から `mirai::mirai()` に渡せます。[mirai の Shiny 統合ガイド](https://mirai.r-lib.org/articles/shiny.html)
+## 技術スタック
 
-「サイコロ集計」ページの「サイコロを振る」は、選んだ回数だけ2個のサイコロを振り、出目の合計の実測値を理論値と比較します。計算中に「1 を足す」を試せるよう、デーモン内に2秒の待ち時間を設けています。画面上部のリンクまたはブラウザーの「戻る」「進む」で、集計結果とカウンターを保持したままページを移動できます。
+| 役割 | 技術と使い方 |
+| --- | --- |
+| デスクトップ・配布 | Rust / Tauri 2 が同梱 R を起動し、Windows の WebView2 にローカルの Shiny を表示します。インストーラーは NSIS 形式です。 |
+| デモの画面とデータ | Shiny / Rhino と box でモジュールを構成し、bslib と shiny.router で画面とナビゲーションを提供します。S7 が集計データの型を、DT が絞り込み可能な表を担当します。 |
+| バックグラウンド処理 | 各セッションの `shiny::ExtendedTask` が計算とレンダリングを mirai に渡します。アプリ起動時に 4 つのローカルデーモンを立ち上げ、終了時に停止します。[mirai の Shiny 統合ガイド](https://mirai.r-lib.org/articles/shiny.html) |
+| レポート | Quarto と knitr が集計時点の値と DT 表を埋め込んだダッシュボードを生成します。R の後処理でスタイルシート・入れ子の CSS `@import`・スクリプトの `data:` URL を復号し、HTML 内の `<style>` と `<script>` に展開します。 |
+| 環境と検証 | Nix flake と rig のロックでツールと R 依存を管理します。mise / Nushell から testthat、shinytest2（Chromium）、cargo-nextest、配布構成テストを実行します。 |
 
-「レポート」ページでは、集計後の出目の分布表を「合計」と「理論割合 (%)」で絞り込めます。たとえば合計「2」を選ぶと、理論割合 2.8% の欄に `1 / 2` と表示されます。同じ理論割合を持つ合計「2」と「12」のうち、表示中は1行という意味です。保存した Quarto ダッシュボードでも同じフィルターをオフラインで操作できます。
+デモでは計算中の操作を試せるよう、サイコロ集計に 2 秒の待ち時間を設けています。「レポート」の表で合計「2」を選ぶと、理論割合 2.8% の欄に `1 / 2` と表示されます。これは「2」と「12」のうち、現在表示している行が 1 件という意味です。保存した HTML でも同じ操作ができます。画像とフォントは HTML 内に埋め込まれます。インライン CSS や JavaScript を制限するプレビューサービスでは、ファイルをローカルブラウザーで開いてください。
 
-## 集計を Quarto ダッシュボードとして保存する
+## ディレクトリ構成
 
-1. 試行回数を選び、「サイコロを振る」を押します。
-2. 「レポート」ページを開いて「レポートを作成」を押します。この時点のカウンター値と計算済みの出目別件数を使います。試行回数は集計に使った実際の回数です。
-3. 作成が終わると「ダウンロード」が表示されます。クリックして `dice-dashboard.html` を保存します。ファイルを単独で別の PC にコピーしても、ブラウザーで集計表と割合を確認できます。
+| パス | 内容 |
+| --- | --- |
+| `src-shiny/` | 既定のデモ。`app.R` が入口、`app/main.R` がページとモジュールを接続します。`tests/testthat/` に単体・ブラウザーテストがあります。 |
+| `src-shiny/app/` | `view/` に画面と共有の表、`logic/` に集計・レポート生成、`types.R` に型検査、`report/dashboard.qmd` にレポートのレイアウトがあります。 |
+| `src-tauri/`、`ui/` | Rust のデスクトップホスト、Tauri 設定・アイコン・テストと、Shiny の起動を待つための HTML です。 |
+| `bundles/`、`examples/minimal/` | デモの配布設定 `rhino.toml`、最小アプリ用の `minimal/bundle.toml` とロック、素の Shiny アプリの例です。 |
+| `scripts/` | Windows ビルド、同梱 R の起動、Git フック設定の確認、配布構成のテストを置きます。 |
+| `.githooks/`、`mise.toml` | コミット・マージ時のフックと、セットアップ・QA・ビルドのタスク定義です。 |
+| `flake.nix`、`flake.lock`、`nix/`、`rust-toolchain.toml` | 開発用・クロスビルド用のシェル、rig の Nix 定義、Rust のバージョンを管理します。 |
+| `rproj.toml`、`rproj.lock` | ルートはビルド機用、`src-shiny/` はデモ用、`bundles/minimal/` は最小アプリ用の R 依存定義とロックです。 |
 
-レンダリングはセッションごとの `shiny::ExtendedTask` から mirai デーモンに渡します。作成中もアプリを操作でき、その後の入力や集計は、作成中のレポートに影響しません。新しい値で保存するには、もう一度「レポートを作成」を押します。
-
-レイアウトは `src-shiny/app/report/dashboard.qmd`、値の受け渡しと HTML の後処理は `src-shiny/app/logic/report.R` にあります。Quarto の `embed-resources: true` で生成した HTML を R で読み、`data:` URL のスタイルシート・CSS の入れ子の `@import`・スクリプトを復号し、HTML 内の `<style>` と `<script>` に展開します。画像とフォントは埋め込みのままです。プレビューサービス側でインライン CSS や JavaScript も制限される場合は、保存した HTML をローカルブラウザーで開いてください。
-
-## ソースと依存関係
-
-- `src-tauri/` に Rust のエントリーポイントと Tauri 設定を置きます。
-- `src-shiny/` は既定の Shiny アプリのソースディレクトリです。このデモは Rhino と rig を使います。`app.R` が入口で、`app/main.R` が shiny.router のルートとモジュール間のデータ受け渡しを定義します。
-- `app/view/` にサイコロ・カウンター・レポートの Shiny モジュールと共有の DT 表、`app/logic/` にサイコロの計算とレポート生成、`app/report/dashboard.qmd` に Quarto のレイアウトを置きます。
-- R の直接依存は `src-shiny/rproj.toml` で宣言します。`src-shiny/` で `rig proj add パッケージ名` を実行し、更新されたマニフェストと `rproj.lock` を一緒にコミットします。マニフェストを手で編集した場合は `rig proj lock` でロックを更新します。[rig のプロジェクトガイド](https://rig.r-lib.org/proj-guide.html)
+デモの R 依存を追加するときは `src-shiny/` で `rig proj add パッケージ名` を実行し、更新されたマニフェストとロックを一緒にコミットします。マニフェストを手で編集した場合は `rig proj lock` でロックを更新します。[rig のプロジェクトガイド](https://rig.r-lib.org/proj-guide.html)
 
 ロックファイルには R 4.6.2 の x86_64 Linux 用と x64 Windows 用の依存関係を記録しています。`mise run setup:r` は `src-shiny/` で `rig proj sync --locked` を実行します。rig はロックされた R がユーザー領域に未導入ならインストールし、パッケージを `src-shiny/.rvenv/lib/` に復元します。ロックファイルの更新後も同じタスクを使えます。
 
 ## Windows x64 用オフラインインストーラー
 
-配布物は NSIS 形式の `<製品名>_*_x64-setup.exe` 1 ファイルです。導入先は **Microsoft Edge WebView2 Runtime がインストール済みの Windows 10/11 x64** を想定しています。受け取った PC はオフラインのままインストーラーを実行し、スタートメニューから起動できます。R は同梱され、Rhino デモにはレポート作成用の Quarto も含まれます。
-
 ### ビルド
 
-ネットに接続できるビルド機で、リポジトリのルートから実行します。x86_64 Linux では、mise が Rust の Windows ターゲット、MinGW-w64、NSIS、rig を含む Nix シェルを起動します。引数を省略すると Rhino デモをビルドします。
+ネットに接続できるビルド機で、リポジトリのルートから実行します。x86_64 Linux では Windows 用の Nix シェルを使えます。標準デモと最小アプリは、それぞれ次のコマンドでビルドします。
 
 ```sh
-mise trust
-mise run build:windows
-mise run build:windows bundles/minimal/bundle.toml
+nix develop .#windows -c mise trust
+nix develop .#windows -c mise run build:windows
+nix develop .#windows -c mise run build:windows bundles/minimal/bundle.toml
 ```
 
-Windows x64 でネイティブビルドする場合は、Visual Studio Build Tools の「C++ によるデスクトップ開発」と Windows SDK、rustup（x64 MSVC）、rig 0.11.1、Nushell、mise を準備します。PowerShell で次を実行してください。
+Windows x64 でネイティブビルドする場合は、上記の前提ツールを用意し、PowerShell で Tauri CLI を導入してビルドします。
 
 ```powershell
 cargo install tauri-cli --version 2.12.6 --locked
@@ -100,13 +126,21 @@ Shiny がループバックの空きポートで待ち受けてから、その U
 
 リポジトリのルートで `nix develop` を実行すると Nushell が起動します。mise のタスクも Nushell で実行されます。
 
-初回はリポジトリのルートで `nix develop -c mise run setup` を実行します。
-このクローンの pre-commit フックが有効になり、`git merge` は fast-forward できる場合もマージコミットを作成します。続けて `setup:r` が R 環境を復元します。
-`setup` の最後に Git の設定値とフックの実行権限を確認し、各項目の結果を表示します。開発シェルでは `mise run setup:check` でいつでも再確認できます。
+### Git フック
+
+`mise run setup` はクローンごとに `core.hooksPath=.githooks` と `merge.ff=false` を設定します。これにより、通常の `git merge` は fast-forward が可能な場合もマージコミットを作成し、テスト結果を待ちます。`mise run setup:check` で設定値と両フックの実行権限を確認できます。
+
+| Git 操作 | コミット作成前に実行する検証 |
+| --- | --- |
+| `main` への直接の `git commit`（`--amend` を含む） | `pre-commit` が QA の実行前に拒否します。変更は `dev` などの作業ブランチでコミットしてから `main` にマージします。 |
+| 作業ブランチでの通常の `git commit` | `pre-commit` が `mise run QA` を実行します。 |
+| `git merge` | `pre-merge-commit` が `mise run QA-full` を実行します。フォーマット、lint、重いケースを含む全テストが成功するとマージコミットを作成します。 |
+| 競合解消後や `git merge --no-commit` 後の `git commit` | `pre-commit` が進行中のマージを検出し、同じ `QA-full` を実行します。 |
+
+フックは Nix 開発シェルを自動で起動します。検証で止まった場合は出力されたエラーを解消し、`git status` でマージが進行中なら `git commit` で検証を再実行できます。
 
 開発シェルでは `mise run QA` で Nix・TOML・R・Nushell のフォーマットと lint を確認できます。
 フォーマットだけなら `mise run format`、lint だけなら `mise run lint` で、言語別のチェックを並列実行できます。
-コミット時も同じタスクが作業ツリーをチェックし、問題があれば該当ファイルを報告してコミットを止めます。
 
 `mise run QA-fix` は Nix・R・Nushell の lint 違反のうち自動修正できるものを直し、Nix・TOML・R・Nushell を整形します。
 すべての修正が完了してから `QA` を実行し、違反が残っていれば失敗します。

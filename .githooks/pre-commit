@@ -1,2 +1,10 @@
 #!/bin/sh
+# Git uses pre-commit when a pending merge is completed with git commit.
+if test -f "$(git rev-parse --git-path MERGE_HEAD)"; then
+  exec "$(git rev-parse --git-path hooks/pre-merge-commit)"
+fi
+if test "$(git symbolic-ref -q HEAD)" = refs/heads/main; then
+  echo 'main への直接コミットは禁止です。作業ブランチでコミットしてから main にマージしてください。' >&2
+  exit 1
+fi
 exec nix develop -c mise run QA
