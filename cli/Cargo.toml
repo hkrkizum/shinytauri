@@ -1,0 +1,16 @@
+[package]
+description = "Package a Shiny application as an offline Windows installer"
+edition     = "2024"
+license     = "MIT"
+name        = "shinytauri-cli"
+publish     = false
+version     = "0.1.0"
+
+[[bin]]
+name = "shinytauri"
+path = "src/main.rs"
+
+[dependencies]
+clap     = { features = ["derive"], version = "4.5" }
+tempfile = "3"
+toml     = "1"
