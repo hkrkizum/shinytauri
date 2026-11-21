@@ -4,12 +4,16 @@ type    = "project"
 version = "0.1.0"
 
 [dependencies]
-R     = ">= 4.6"
-box   = "*"
-bslib = "*"
-mirai = "*"
-rhino = "*"
-shiny = "*"
+R         = ">= 4.6"
+base64enc = "*"
+box       = "*"
+bslib     = "*"
+curl      = "*"
+mirai     = "*"
+processx  = "*"
+rhino     = "*"
+shiny     = "*"
+xml2      = "*"
 
 [tool.rig]
 platforms     = ["x86_64-unknown-linux-gnu", "x86_64-w64-mingw32"]

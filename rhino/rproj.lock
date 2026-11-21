@@ -17,6 +17,10 @@ platform = "x86_64-unknown-linux-gnu"
 bioc-version = "3.23"
 
 [[targets.direct_dependencies]]
+name = "base64enc"
+constraint = "*"
+
+[[targets.direct_dependencies]]
 name = "box"
 constraint = "*"
 
@@ -25,7 +29,15 @@ name = "bslib"
 constraint = "*"
 
 [[targets.direct_dependencies]]
+name = "curl"
+constraint = "*"
+
+[[targets.direct_dependencies]]
 name = "mirai"
+constraint = "*"
+
+[[targets.direct_dependencies]]
+name = "processx"
 constraint = "*"
 
 [[targets.direct_dependencies]]
@@ -34,6 +46,10 @@ constraint = "*"
 
 [[targets.direct_dependencies]]
 name = "shiny"
+constraint = "*"
+
+[[targets.direct_dependencies]]
+name = "xml2"
 constraint = "*"
 
 [[targets.direct_dependencies]]
@@ -509,11 +525,11 @@ metadata = { RemoteHash = "ac3bc0fc0e789510042522e6c4294336c71447be8f6921b5ef78b
 [[targets.packages]]
 package = "tinytex"
 version = "0.61"
-binary = false
-platform = "source"
+binary = true
+platform = "x86_64-unknown-linux-gnu"
 dependencies = ["xfun"]
-sources = ["https://p3m.dev/cran/2026-09-18/src/contrib/tinytex_0.61.tar.gz"]
-target = "src/tinytex_0.61-4ba96a03.tar.gz"
+sources = ["https://p3m.dev/cran/2026-09-18/bin/linux/manylinux_2_28-x86_64/4.6/src/contrib/tinytex_0.61.tar.gz"]
+target = "bin/linux/manylinux_2_28-x86_64/4.6/tinytex_0.61-4ba96a03.tar.gz"
 groups = ["dev"]
 metadata = { RemoteHash = "78300dc6163911c7de3efbe225c3bf455287c67886ed0e5a04fd347c6eaf2680" }
 
@@ -1488,6 +1504,10 @@ platform = "x86_64-w64-mingw32"
 bioc-version = "3.23"
 
 [[targets.direct_dependencies]]
+name = "base64enc"
+constraint = "*"
+
+[[targets.direct_dependencies]]
 name = "box"
 constraint = "*"
 
@@ -1496,7 +1516,15 @@ name = "bslib"
 constraint = "*"
 
 [[targets.direct_dependencies]]
+name = "curl"
+constraint = "*"
+
+[[targets.direct_dependencies]]
 name = "mirai"
+constraint = "*"
+
+[[targets.direct_dependencies]]
+name = "processx"
 constraint = "*"
 
 [[targets.direct_dependencies]]
@@ -1505,6 +1533,10 @@ constraint = "*"
 
 [[targets.direct_dependencies]]
 name = "shiny"
+constraint = "*"
+
+[[targets.direct_dependencies]]
+name = "xml2"
 constraint = "*"
 
 [[targets.direct_dependencies]]
@@ -2668,22 +2700,6 @@ groups = ["main"]
 metadata = { RemoteHash = "6c1c7ed913965e1604751f25a8b62fe56035471fb2f2a929a12dc5bebd187ac7" }
 
 [[targets.packages]]
-package = "websocket"
-version = "1.4.4"
-binary = false
-platform = "source"
-dependencies = [
-    "R6",
-    "later",
-    "AsioHeaders",
-    "cpp11",
-]
-sources = ["https://p3m.dev/cran/2025-04-11/src/contrib/websocket_1.4.4.tar.gz"]
-target = "src/websocket_1.4.4-b45968c3.tar.gz"
-groups = ["dev"]
-metadata = { RemoteHash = "9fcd00271e461ec9deda4aef83155f9f8c9125490123fc11121df48e11f4142e", RemoteLinkingToHashes = "later@1.4.8=ce5d88b3fd1df409eaa21aa53bf20b1a9331f75cd69e7e9b2a27b40d2290d219, cpp11@0.5.5=72486beb0605c1229bf3d422cd536224af8dc09bd389a3116f62f4c7705c62f4, AsioHeaders@1.30.2-1=1be43b48a4cc704ef84b5673b4fc78323709fd0d61c18dbd364ac89a38e2ab31" }
-
-[[targets.packages]]
 package = "pingr"
 version = "2.0.5"
 binary = true
@@ -2693,6 +2709,22 @@ sources = ["https://p3m.dev/cran/2024-12-13/bin/windows/contrib/4.6/pingr_2.0.5.
 target = "bin/windows/4.6/pingr_2.0.5-ac66e565.zip"
 groups = ["dev"]
 metadata = { RemoteHash = "218ba664f38b68d8c5c2c934122a114b191b6c7303c13397f4bebc25a2735f94" }
+
+[[targets.packages]]
+package = "websocket"
+version = "1.4.4"
+binary = true
+platform = "x86_64-w64-mingw32"
+dependencies = [
+    "R6",
+    "later",
+    "AsioHeaders",
+    "cpp11",
+]
+sources = ["https://p3m.dev/cran/2026-07-06/bin/windows/contrib/4.6/websocket_1.4.4.zip"]
+target = "bin/windows/4.6/websocket_1.4.4-6f56350e.zip"
+groups = ["dev"]
+metadata = { RemoteHash = "9fcd00271e461ec9deda4aef83155f9f8c9125490123fc11121df48e11f4142e", RemoteLinkingToHashes = "AsioHeaders@1.30.2-1=1be43b48a4cc704ef84b5673b4fc78323709fd0d61c18dbd364ac89a38e2ab31, Rcpp@1.1.2=2746cf2fb188e5f0a84dbf5c8f68915b54564ed33e5754572f174e7b32e7f4f3, cpp11@0.5.5=72486beb0605c1229bf3d422cd536224af8dc09bd389a3116f62f4c7705c62f4, later@1.4.8=ce5d88b3fd1df409eaa21aa53bf20b1a9331f75cd69e7e9b2a27b40d2290d219" }
 
 [[targets.packages]]
 package = "mirai"

@@ -1,0 +1,31 @@
+---
+title: "サイコロの集計レポート"
+lang: ja
+format:
+  dashboard:
+    embed-resources: true
+    expandable: false
+    scrolling: true
+---
+
+## Row
+
+::: {.card title="カウンター"}
+**{{COUNTER}}**
+:::
+
+::: {.card title="試行回数"}
+**{{TRIALS}} 回**
+:::
+
+::: {.card title="合計が 7 になった割合"}
+**{{SEVEN}} %**
+:::
+
+## Row
+
+::: {.card title="サイコロ 2 個の出目の分布"}
+| 合計 | 観測回数 | 観測割合 | 理論割合 |
+|----:|--------:|--------:|--------:|
+{{ROWS}}
+:::

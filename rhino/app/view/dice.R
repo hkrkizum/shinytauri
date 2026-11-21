@@ -8,6 +8,7 @@ box::use(
     NS,
     observeEvent,
     plotOutput,
+    reactive,
     renderPlot,
     renderText,
     req,
@@ -110,5 +111,6 @@ server <- function(id) {
         100 * counts[6L] / sum(counts)
       )
     })
+    reactive(if (task$status() == "success") task$result())
   })
 }

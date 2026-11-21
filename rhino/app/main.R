@@ -1,9 +1,9 @@
 box::use(
   bslib[bs_theme, card, card_body, card_header, layout_columns, page_fluid],
-  shiny[actionButton, moduleServer, NS, renderText, tags, textOutput]
+  shiny[actionButton, moduleServer, NS, reactive, renderText, tags, textOutput]
 )
 
-box::use(app / view / dice)
+box::use(app / view / dice, app / view / report)
 
 #' @export
 ui <- function(id) {
@@ -38,7 +38,8 @@ ui <- function(id) {
             )
           )
         )
-      )
+      ),
+      report$ui(ns("report"))
     )
   )
 }
@@ -46,7 +47,8 @@ ui <- function(id) {
 #' @export
 server <- function(id) {
   moduleServer(id, function(input, output, session) {
-    dice$server("dice")
+    counts <- dice$server("dice")
+    report$server("report", counts, reactive(input$increment))
     output$count <- renderText(sprintf("カウント：%d", input$increment))
   })
 }

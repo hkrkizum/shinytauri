@@ -155,3 +155,7 @@ run         = ["jarl check --fix-only --allow-dirty .", "air format ."]
 [tasks."run:tauri"]
 description = "Run the Tauri application"
 run         = "cargo tauri dev"
+
+[tasks."build:windows"]
+description = "Bundle portable R, Quarto and locked R packages in an offline Windows installer"
+run         = "Rscript --vanilla scripts/build-windows.R"
