@@ -1,0 +1,71 @@
+name: Release CLI
+
+on:
+  push:
+    tags: ['cli-v*']
+
+permissions:
+  contents: read
+
+jobs:
+  binary:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            executable: shinytauri
+            asset: shinytauri-x86_64-linux
+          - os: windows-2022
+            executable: shinytauri.exe
+            asset: shinytauri-x86_64-windows.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test the CLI and build a release binary
+        shell: bash
+        run: |
+          cargo test --manifest-path cli/Cargo.toml --locked
+          cargo build --manifest-path cli/Cargo.toml --locked --release
+      - name: Verify the binary outside the checkout
+        shell: bash
+        env:
+          EXECUTABLE: ${{ matrix.executable }}
+          ASSET: ${{ matrix.asset }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          mkdir release
+          cp "cli/target/release/$EXECUTABLE" "release/$ASSET"
+          binary="$PWD/release/$ASSET"
+          cd "$(mktemp -d)"
+          test "$("$binary" --version)" = "shinytauri ${RELEASE_TAG#cli-v}"
+          "$binary" --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: release/${{ matrix.asset }}
+          if-no-files-found: error
+
+  windows-smoke:
+    uses: ./.github/workflows/cli-windows-smoke.yml
+
+  publish:
+    needs: [binary, windows-smoke]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: shinytauri-x86_64-*
+          path: release
+          merge-multiple: true
+      - name: Publish both binaries and their checksums
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          sha256sum shinytauri-x86_64-linux shinytauri-x86_64-windows.exe > SHA256SUMS
+          gh release create "$RELEASE_TAG" --verify-tag --generate-notes --title "$RELEASE_TAG" \
+            shinytauri-x86_64-linux shinytauri-x86_64-windows.exe SHA256SUMS
