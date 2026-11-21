@@ -1,2 +1,6 @@
 #!/bin/sh
+# Git uses pre-commit when a pending merge is completed with git commit.
+if git rev-parse --verify -q MERGE_HEAD >/dev/null; then
+  exec "$(git rev-parse --git-path hooks/pre-merge-commit)"
+fi
 exec nix develop -c mise run QA

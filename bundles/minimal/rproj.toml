@@ -1,0 +1,13 @@
+[project]
+name    = "minimal-shiny-runtime"
+type    = "project"
+version = "0.1.0"
+
+[dependencies]
+R     = ">= 4.6"
+shiny = "*"
+
+[tool.rig]
+platforms     = ["x86_64-w64-mingw32"]
+prefer-binary = true
+r-versions    = ["4.6.2"]

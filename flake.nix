@@ -45,6 +45,7 @@
           nixfmt # Nix フォーマッタ
 
           # Development shell, task runner and QA
+          quarto
           nushell
           nufmt
           nu-lint
@@ -89,9 +90,29 @@
         { pkgs }:
         let
           rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+          rustVersion = (builtins.fromTOML (builtins.readFile ./rust-toolchain.toml)).toolchain.channel;
           rig = pkgs.callPackage ./nix/rig.nix { };
         in
         {
+          windows = pkgs.mkShell {
+            packages = with pkgs; [
+              (rust-bin.stable.${rustVersion}.minimal.override {
+                targets = [ "x86_64-pc-windows-gnu" ];
+              })
+              pkgsCross.mingwW64.stdenv.cc
+              cargo-tauri
+              nsis
+              rig
+              nushell
+              mise
+            ];
+            env = {
+              SHINYTAURI_WINDOWS_SHELL = "1";
+              R_LD_LIBRARY_PATH = "$ORIGIN/../../lib";
+              NIX_LDFLAGS_x86_64_w64_mingw32 = "-L${pkgs.pkgsCross.mingwW64.windows.pthreads}/lib";
+              CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER = "x86_64-w64-mingw32-gcc";
+            };
+          };
           default = pkgs.mkShell {
             env.RIG_MODE = "user";
             packages = [
@@ -102,7 +123,7 @@
             ++ fontPackagesFor pkgs;
             shellHook = ''
               export CODEX_HOME="$PWD/.codex"
-              export PATH="$PWD/rhino/.rvenv/bin:$PATH:$HOME/.local/bin"
+              export PATH="$PWD/src-shiny/.rvenv/bin:$PATH:$HOME/.local/bin"
               # rig's R needs its own libR.so. Adding the host libc directory
               # to LD_LIBRARY_PATH would also load it into Nix subprocesses.
               export R_LD_LIBRARY_PATH='$ORIGIN/../../lib'

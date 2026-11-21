@@ -1,0 +1,40 @@
+---
+title: "サイコロの集計レポート"
+lang: ja
+format:
+  dashboard:
+    embed-resources: true
+    expandable: false
+    scrolling: true
+---
+
+```{r}
+#| include: false
+snapshot <- readRDS("snapshot.rds")
+options(box.path = snapshot$root)
+box::use(app / logic / dice[DiceDistribution], app / view / distribution[distribution_table])
+result <- DiceDistribution(counts = snapshot$counts)
+```
+
+## Row
+
+::: {.card title="カウンター"}
+**`r snapshot$counter`**
+:::
+
+::: {.card title="試行回数"}
+**`r format(result@total, big.mark = ",", scientific = FALSE)` 回**
+:::
+
+::: {.card title="合計が 7 になった割合"}
+**`r sprintf("%.1f", result@observed_percent[[6L]])` %**
+:::
+
+## Row
+
+::: {.card title="サイコロ 2 個の出目の分布"}
+```{r}
+#| echo: false
+distribution_table(result)
+```
+:::

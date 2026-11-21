@@ -17,12 +17,12 @@ run = [
 
 [tasks."setup:r"]
 description = "Install the locked R version and restore the Rhino project library"
-dir         = "rhino"
+dir         = "src-shiny"
 hide        = true
 run         = "rig proj sync --locked"
 
 [tasks."setup:check"]
-description = "Verify the local Git settings and the pre-commit hook"
+description = "Verify local Git settings and executable commit and merge hooks"
 hide        = true
 run         = "nu --no-config-file scripts/setup-check.nu"
 
@@ -46,8 +46,8 @@ run         = [{ task = "QA" }]
 
 # Tests ────────────────────────────────────────────────────────────────────────
 [tasks.test]
-depends     = ["test:testthat", "test:shinytest2", "test:tauri"]
-description = "Run Rhino unit tests, browser tests and Tauri tests in parallel"
+depends     = ["test:testthat", "test:shinytest2", "test:tauri", "test:bundle"]
+description = "Run Rhino, browser, Tauri and bundle tests in parallel"
 
 [tasks.test-full]
 description = "Run all test suites including heavy cases"
@@ -56,14 +56,21 @@ run         = "mise run test"
 
 [tasks."test:testthat"]
 description = "Run Rhino unit tests with testthat"
-dir         = "rhino"
+dir         = "src-shiny"
 run         = """rig run -e 'rhino::test_r(filter = "^shinytest2", invert = TRUE)'"""
 
 [tasks."test:shinytest2"]
 description = "Run Rhino browser tests with shinytest2"
-dir         = "rhino"
+dir         = "src-shiny"
 env         = { NOT_CRAN = "true" }
 run         = """rig run -e 'rhino::test_r(filter = "^shinytest2")'"""
+
+[tasks."test:bundle"]
+description = "Test packaging with the locked build R environment"
+run = [
+  "rig proj sync --locked",
+  "rig run --rscript scripts/tests/test-bundle.R",
+]
 
 [tasks."test:tauri"]
 description = "Run Tauri tests in parallel with cargo-nextest"
@@ -155,3 +162,15 @@ run         = ["jarl check --fix-only --allow-dirty .", "air format ."]
 [tasks."run:tauri"]
 description = "Run the Tauri application"
 run         = "cargo tauri dev"
+
+[tasks."build:windows"]
+description = "Build an offline Windows installer for the selected Shiny app"
+run = '''
+if $nu.os-info.name == "linux" and $env.SHINYTAURI_WINDOWS_SHELL? != "1" {
+  ^nix develop .#windows -c mise run build:windows $env.usage_bundle
+} else {
+  ^rig proj sync --locked
+  ^rig run --rscript scripts/build-windows.R $env.usage_bundle
+}
+'''
+usage = 'arg "[bundle]" help="Bundle TOML path" default="bundles/rhino.toml"'

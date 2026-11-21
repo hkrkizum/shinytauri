@@ -7,7 +7,7 @@
     "frontendDist": "../ui",
     "devUrl": "http://127.0.0.1:3838",
     "beforeDevCommand": {
-      "cwd": "../rhino",
+      "cwd": "../src-shiny",
       "script": "rig run dev.R"
     }
   },

@@ -1,0 +1,134 @@
+version = 7
+
+[tool.rig]
+prefer-binary = 3
+
+[[tool.rig.repository]]
+name = "bioc"
+metadata = "https://ppm-bioc.r-pkg.org/%v"
+
+[[tool.rig.repository]]
+name = "cran"
+metadata = "https://ppm.r-pkg.org"
+
+[[targets]]
+r_version = "4.6.2"
+platform = "x86_64-unknown-linux-gnu"
+bioc-version = "3.23"
+
+[[targets.direct_dependencies]]
+name = "RcppTOML"
+constraint = "*"
+
+[[targets.direct_dependencies]]
+name = "filelock"
+constraint = "*"
+
+[[targets.direct_dependencies]]
+name = "jsonlite"
+constraint = "*"
+
+[[targets.packages]]
+package = "RcppTOML"
+version = "0.2.3"
+binary = true
+platform = "x86_64-unknown-linux-gnu"
+dependencies = ["Rcpp"]
+sources = ["https://p3m.dev/cran/2026-07-06/bin/linux/manylinux_2_28-x86_64/4.6/src/contrib/RcppTOML_0.2.3.tar.gz"]
+target = "bin/linux/manylinux_2_28-x86_64/4.6/RcppTOML_0.2.3-5ee930d7.tar.gz"
+groups = ["main"]
+metadata = { RemoteHash = "2ed594253c562bef7065e67d791197f61b221e545206a1b3598d46868cf5926f", RemoteLinkingToHashes = "Rcpp@1.1.2=2746cf2fb188e5f0a84dbf5c8f68915b54564ed33e5754572f174e7b32e7f4f3" }
+
+[[targets.packages]]
+package = "jsonlite"
+version = "2.0.0"
+binary = true
+platform = "x86_64-unknown-linux-gnu"
+dependencies = []
+sources = ["https://p3m.dev/cran/2025-03-28/bin/linux/manylinux_2_28-x86_64/4.6/src/contrib/jsonlite_2.0.0.tar.gz"]
+target = "bin/linux/manylinux_2_28-x86_64/4.6/jsonlite_2.0.0-38c76850.tar.gz"
+groups = ["main"]
+metadata = { RemoteHash = "75eb910c82b350ec33f094779da0f87bff154c232e4ae39c9896a9b89f3ac82d" }
+
+[[targets.packages]]
+package = "filelock"
+version = "1.0.3"
+binary = true
+platform = "x86_64-unknown-linux-gnu"
+dependencies = []
+sources = ["https://p3m.dev/cran/2023-12-12/bin/linux/manylinux_2_28-x86_64/4.6/src/contrib/filelock_1.0.3.tar.gz"]
+target = "bin/linux/manylinux_2_28-x86_64/4.6/filelock_1.0.3-e164fcd2.tar.gz"
+groups = ["main"]
+metadata = { RemoteHash = "2dcd0ec453f5ec4d96f69b0c472569d57d3c5f9956a82a48492ee02f12071137" }
+
+[[targets.packages]]
+package = "Rcpp"
+version = "1.1.2"
+binary = true
+platform = "x86_64-unknown-linux-gnu"
+dependencies = []
+sources = ["https://p3m.dev/cran/2026-07-06/bin/linux/manylinux_2_28-x86_64/4.6/src/contrib/Rcpp_1.1.2.tar.gz"]
+target = "bin/linux/manylinux_2_28-x86_64/4.6/Rcpp_1.1.2-0af8c486.tar.gz"
+groups = ["main"]
+metadata = { RemoteHash = "2746cf2fb188e5f0a84dbf5c8f68915b54564ed33e5754572f174e7b32e7f4f3" }
+
+[[targets]]
+r_version = "4.6.2"
+platform = "x86_64-w64-mingw32"
+bioc-version = "3.23"
+
+[[targets.direct_dependencies]]
+name = "RcppTOML"
+constraint = "*"
+
+[[targets.direct_dependencies]]
+name = "filelock"
+constraint = "*"
+
+[[targets.direct_dependencies]]
+name = "jsonlite"
+constraint = "*"
+
+[[targets.packages]]
+package = "RcppTOML"
+version = "0.2.3"
+binary = true
+platform = "x86_64-w64-mingw32"
+dependencies = ["Rcpp"]
+sources = ["https://p3m.dev/cran/2026-07-06/bin/windows/contrib/4.6/RcppTOML_0.2.3.zip"]
+target = "bin/windows/4.6/RcppTOML_0.2.3-5ee930d7.zip"
+groups = ["main"]
+metadata = { RemoteHash = "2ed594253c562bef7065e67d791197f61b221e545206a1b3598d46868cf5926f", RemoteLinkingToHashes = "Rcpp@1.1.2=2746cf2fb188e5f0a84dbf5c8f68915b54564ed33e5754572f174e7b32e7f4f3" }
+
+[[targets.packages]]
+package = "jsonlite"
+version = "2.0.0"
+binary = true
+platform = "x86_64-w64-mingw32"
+dependencies = []
+sources = ["https://p3m.dev/cran/2025-03-28/bin/windows/contrib/4.6/jsonlite_2.0.0.zip"]
+target = "bin/windows/4.6/jsonlite_2.0.0-38c76850.zip"
+groups = ["main"]
+metadata = { RemoteHash = "75eb910c82b350ec33f094779da0f87bff154c232e4ae39c9896a9b89f3ac82d" }
+
+[[targets.packages]]
+package = "filelock"
+version = "1.0.3"
+binary = true
+platform = "x86_64-w64-mingw32"
+dependencies = []
+sources = ["https://p3m.dev/cran/2023-12-12/bin/windows/contrib/4.6/filelock_1.0.3.zip"]
+target = "bin/windows/4.6/filelock_1.0.3-e164fcd2.zip"
+groups = ["main"]
+metadata = { RemoteHash = "2dcd0ec453f5ec4d96f69b0c472569d57d3c5f9956a82a48492ee02f12071137" }
+
+[[targets.packages]]
+package = "Rcpp"
+version = "1.1.2"
+binary = true
+platform = "x86_64-w64-mingw32"
+dependencies = []
+sources = ["https://p3m.dev/cran/2026-07-06/bin/windows/contrib/4.6/Rcpp_1.1.2.zip"]
+target = "bin/windows/4.6/Rcpp_1.1.2-0af8c486.zip"
+groups = ["main"]
+metadata = { RemoteHash = "2746cf2fb188e5f0a84dbf5c8f68915b54564ed33e5754572f174e7b32e7f4f3" }

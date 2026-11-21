@@ -11,3 +11,12 @@ tauri-build = { features = [], version = "2.7.6" }
 
 [dependencies]
 tauri = { features = [], version = "2.12.7" }
+
+[target.'cfg(windows)'.dependencies]
+tempfile = "3"
+windows-sys = { features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+], version = "0.61" }
