@@ -13,6 +13,8 @@ on:
       - 'examples/**'
       - 'scripts/**'
       - 'rproj.*'
+      - 'flake.*'
+      - 'nix/**'
       - '.github/workflows/cli-windows-smoke.yml'
 
 permissions:
@@ -20,15 +22,23 @@ permissions:
 
 jobs:
   installers:
-    runs-on: windows-2022
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 100
     strategy:
       fail-fast: false
       matrix:
-        app: [minimal, rhino]
+        include:
+          - app: minimal
+            runner: ubuntu-24.04
+          - app: rhino
+            runner: windows-2022
     steps:
       - uses: actions/checkout@v4
+      - name: Install Nix for the Windows cross-build
+        if: runner.os == 'Linux'
+        uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
       - name: Install Windows build tools
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           function Install-ZipTool($url, $sha256, $exe) {
@@ -52,20 +62,38 @@ jobs:
           RIG_MODE: user
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          $cli = Join-Path $env:RUNNER_TEMP 'shinytauri.exe'
-          Copy-Item 'cli/target/release/shinytauri.exe' $cli
+          $exe = if ($IsWindows) { 'shinytauri.exe' } else { 'shinytauri' }
+          $cli = Join-Path $env:RUNNER_TEMP $exe
+          Copy-Item "cli/target/release/$exe" $cli
           $caller = New-Item -Type Directory "$env:RUNNER_TEMP/利用者の 作業"
           $app = Join-Path $caller "shinytauri-smoke-$env:FIXTURE"
           $dist = Join-Path $app 'dist'
           if ($env:FIXTURE -eq 'minimal') {
-            Copy-Item 'examples/minimal' $app -Recurse
-            Copy-Item 'bundles/minimal/rproj.lock' $app
+            New-Item -Type Directory $app | Out-Null
+            Copy-Item 'examples/minimal/www' $app -Recurse
+            @'
+          Package: counter
+          Version: 1.0.0
+          Imports: shiny, stringr (== 1.6.0)
+          '@ | Set-Content "$app/DESCRIPTION" -Encoding utf8NoBOM
+            @'
+          library(shiny)
+          ui <- fluidPage(tags$link(rel = "stylesheet", href = "style.css"),
+                          actionButton("count", "Count"), textOutput("total"))
+          server <- function(input, output, session) {
+            output$total <- renderText(sprintf("%s (stringr %s)",
+              stringr::str_pad(as.integer(input$count), 4, pad = "0"),
+              utils::packageVersion("stringr")))
+          }
+          shinyApp(ui, server)
+          '@ | Set-Content "$app/app.R" -Encoding utf8NoBOM
           } else {
             Copy-Item 'src-shiny' $app -Recurse
           }
           Set-Location $caller
           & $cli init $app --id "org.example.$env:FIXTURE"
           if ($env:FIXTURE -eq 'minimal') {
+            & $cli lock $app
             & $cli build $app
           } else {
             # Keep init's actual file list and lock path. In particular, a
