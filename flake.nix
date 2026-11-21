@@ -46,6 +46,7 @@
 
           # Development shell, task runner and QA
           quarto
+          python3
           nushell
           nufmt
           nu-lint
@@ -94,6 +95,20 @@
           rig = pkgs.callPackage ./nix/rig.nix { };
         in
         {
+          # Manual pages use static Markdown and need no R or Jupyter engine.
+          # flake.lock pins nixpkgs; check the renderer when updating the lock.
+          docs =
+            assert pkgs.lib.assertMsg (
+              pkgs.quartoMinimal.version == "1.10.18"
+            ) "Review the manual with the new Quarto version before updating the pin";
+            pkgs.mkShellNoCC {
+              packages = with pkgs; [
+                quartoMinimal
+                python3
+                mise
+                nushell
+              ];
+            };
           windows = pkgs.mkShell {
             packages = with pkgs; [
               (rust-bin.stable.${rustVersion}.minimal.override {
