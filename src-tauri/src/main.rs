@@ -3,6 +3,8 @@
 
 #[cfg(all(windows, not(dev)))]
 mod offline;
+#[cfg(all(windows, any(not(dev), test)))]
+mod quarto;
 
 fn main() {
     let builder = tauri::Builder::default();

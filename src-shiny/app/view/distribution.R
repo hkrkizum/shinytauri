@@ -9,12 +9,12 @@ S7::method(distribution_table, dice$DiceDistribution) <- function(
   distribution
 ) {
   data <- data.frame(
-    合計 = dice$sums,
-    観測回数 = distribution@counts,
-    `観測割合 (%)` = round(distribution@observed_percent, 1),
-    `理論割合 (%)` = round(dice$expected_percent, 1),
-    check.names = FALSE
+    sum = dice$sums,
+    count = distribution@counts,
+    observed = round(distribution@observed_percent, 1),
+    expected = round(dice$expected_percent, 1)
   )
+  names(data) <- c("合計", "観測回数", "観測割合 (%)", "理論割合 (%)")
   pane_columns <- c(0L, 3L)
   DT::datatable(
     data,

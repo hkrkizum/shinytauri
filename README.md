@@ -2,6 +2,32 @@
 
 Shiny アプリと R を、オフラインで導入できる Windows 用インストーラーにまとめるプロジェクトです。標準のデモでは、2 個のサイコロを振った結果を集計し、操作できる表を含む Quarto ダッシュボードを HTML 1 ファイルに保存できます。別の Shiny アプリも配布設定 TOML で指定できます。
 
+## 自分の Shiny アプリを Windows インストーラーにする
+
+既存の Shiny プロジェクトで `shinytauri init` を一度実行すると、以降は `shinytauri build .` で Windows x64 用の NSIS インストーラーを生成できます。アプリのソースは今の場所で編集できます。
+
+CLI のビルド済みバイナリは [GitHub Releases](https://github.com/hkrkizum/shinytauri/releases) に `cli-v<バージョン>` タグで配布する形式です。Linux x64 用の `shinytauri-x86_64-linux` は `shinytauri`、Windows x64 用の `shinytauri-x86_64-windows.exe` は `shinytauri.exe` として PATH の通ったディレクトリに置きます。Linux では実行権限を付けてください。ソースから導入する場合は、このリポジトリのルートで `cargo install --locked --path cli` を実行します。Linux の Nix 開発環境では `nix develop -c cargo install --locked --path cli` も使えます。
+
+```sh
+cd sales-dashboard
+shinytauri init . --id jp.example.sales-dashboard
+shinytauri build .
+```
+
+1. **初期設定**　`app.R` または `ui.R` と `server.R` があるディレクトリを指定します。生成された `shinytauri.toml` の `files` を確認し、独自の画像やデータを追加してください。初期設定にはその時点のファイルが個別に記録されるため、あとで追加したモジュールや画像も `files` に追記します。`www` のようにディレクトリ名を指定すると、その中のファイルが今後追加するものも含めてすべて配布されます。別製品には別々の `identifier` と `productName` を付け、同じ製品を更新するときは両方を保って `version` を上げます。`title` でウィンドウ名を指定できます。
+2. **R 依存の指定**　アプリ直下に rig の `rproj.lock` があれば再利用します。必要なのは Windows x64、対応するポータブル R（現在 4.6.2）、`main` グループの `shiny` とアプリの実行時依存です。アプリに rig の設定がなければ `.shinytauri/` に最小のマニフェストとロックを生成します。既存の `rproj.toml` だけがある場合は、その隣で Windows ターゲットを指定して `rig proj lock` を実行してください。たとえば `DT` を使っている場合は、配布用の `rproj.toml` があるディレクトリで `rig proj add DT` を実行してロックを更新します。実行時に読み込むパッケージは開発者が宣言します。Quarto CLI も同梱する場合は `quarto = true` を設定します。
+3. **ビルドと配布**　CLI はバージョンを合わせた Tauri ホストを一時ディレクトリに展開し、そこでビルド用 R と Rust のビルドを実行します。ビルド時にはポータブル R とパッケージを取得するため、インターネット接続が必要です。指定したファイルを同梱した `dist/*-setup.exe` を配布してください。配布先の要件は Windows 10/11 x64 と WebView2 Runtime です。
+
+Rhino の `app/static/` のように、空でも起動に必要なディレクトリがあります。`init` はこのようなディレクトリを `emptyDirs` に記録します。ビルド時に配布物の中でその場所を確保するため、アプリ側でダミーファイルを用意する必要はありません。後から追加したファイルを配布する場合は `files` に加えてください。
+
+既存の配布設定や別の出力先も指定できます。
+
+```sh
+shinytauri build --config ./packaging/bundle.toml --out-dir ./installers
+```
+
+設定の `app` と `lock` は TOML の場所、`files` はアプリの場所、コマンドラインの引数は呼び出したディレクトリが基準です。ビルド機は Linux x86_64 では flakes が有効な Nix、Windows x64 では MSVC、Windows SDK、Rust、rig、Tauri CLI を使用します。Linux では同梱の `windows` flake がクロスビルド環境を用意します。Windows での初期準備は後述の「開発・ビルドに必要なツール」を参照してください。
+
 ## Getting Started — Windows で配布版を使う
 
 必要なものは、Microsoft Edge WebView2 Runtime 導入済みの Windows 10/11 x64 PC と、配布担当者が用意した `shinytauri_<バージョン>_x64-setup.exe` です。デモには R・実行用パッケージ・Quarto が同梱されています。インストールからレポートの保存までオフラインで行えます。
@@ -151,8 +177,9 @@ Shiny がループバックの空きポートで待ち受けてから、その U
 
 | コマンド | 実行内容 |
 | --- | --- |
+| `mise run test:cli` | CLI の初期設定・ビルド引数・作業場所の分離・同梱ホストを検証 |
 | `mise run test:bundle` | Rhino と最小 Shiny アプリの配布ファイルおよび実行時依存を検証 |
-| `mise run test` | Rhino の単体テスト、shinytest2 のブラウザーテスト、Tauri の nextest、配布構成テストを並列実行 |
+| `mise run test` | Rhino の単体テスト、shinytest2 のブラウザーテスト、Tauri の nextest、配布構成と CLI のテストを並列実行 |
 | `mise run test-full` | 同じテストで重いケースも実行 |
 | `mise run QA-ci` | `QA` と `test` |
 | `mise run QA-full` | `QA` と `test-full` |

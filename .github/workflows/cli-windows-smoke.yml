@@ -1,0 +1,124 @@
+name: Windows CLI acceptance
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  pull_request:
+    paths:
+      - 'cli/**'
+      - 'src-tauri/**'
+      - 'src-shiny/**'
+      - 'ui/**'
+      - 'bundles/**'
+      - 'examples/**'
+      - 'scripts/**'
+      - 'rproj.*'
+      - '.github/workflows/cli-windows-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  installers:
+    runs-on: windows-2022
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [minimal, rhino]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Windows build tools
+        shell: pwsh
+        run: |
+          function Install-ZipTool($url, $sha256, $exe) {
+            $archive = Join-Path $env:RUNNER_TEMP "$exe.zip"
+            Invoke-WebRequest $url -OutFile $archive
+            if ((Get-FileHash $archive).Hash -ne $sha256) { throw "$exe checksum mismatch" }
+            $dir = Join-Path $env:RUNNER_TEMP "$exe-tool"
+            Expand-Archive $archive $dir
+            $found = @(Get-ChildItem $dir -Recurse -Filter $exe)
+            if ($found.Count -ne 1) { throw "Expected one $exe in the tool archive" }
+            $found[0].DirectoryName >> $env:GITHUB_PATH
+          }
+          Install-ZipTool 'https://github.com/r-lib/rig/releases/download/v0.11.1/rig-windows-x86_64-0.11.1.zip' 'a0ce65f2afb2f016488523818d14c4596080c61f32d0dab4c123c7f5e1db8910' 'rig.exe'
+          Install-ZipTool 'https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.12.6/cargo-tauri-x86_64-pc-windows-msvc.zip' '39636fa68bc00f13dd610fb57688f292e93742978cc35395f2f1be7c540b88a1' 'cargo-tauri.exe'
+      - name: Build the standalone CLI
+        run: cargo build --locked --release --manifest-path cli/Cargo.toml
+      - name: Package an external project
+        shell: pwsh
+        env:
+          FIXTURE: ${{ matrix.app }}
+          RIG_MODE: user
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $cli = Join-Path $env:RUNNER_TEMP 'shinytauri.exe'
+          Copy-Item 'cli/target/release/shinytauri.exe' $cli
+          $caller = New-Item -Type Directory "$env:RUNNER_TEMP/利用者の 作業"
+          $app = Join-Path $caller "shinytauri-smoke-$env:FIXTURE"
+          $dist = Join-Path $app 'dist'
+          if ($env:FIXTURE -eq 'minimal') {
+            Copy-Item 'examples/minimal' $app -Recurse
+            Copy-Item 'bundles/minimal/rproj.lock' $app
+          } else {
+            Copy-Item 'src-shiny' $app -Recurse
+          }
+          Set-Location $caller
+          & $cli init $app --id "org.example.$env:FIXTURE"
+          if ($env:FIXTURE -eq 'minimal') {
+            & $cli build $app
+          } else {
+            # Keep init's actual file list and lock path. In particular, a
+            # Rhino app needs app/static/ even if it only contains .gitkeep.
+            $profile = Join-Path $app '配布.toml'
+            $settings = Get-Content (Join-Path $app 'shinytauri.toml') |
+              Where-Object { $_ -notmatch '^\s*(version|title|quarto)\s*=' }
+            $settings + @('version = "1.2.3"', 'title = "Rhino Smoke"', 'quarto = true') |
+              Set-Content $profile -Encoding utf8NoBOM
+            & $cli build --config $profile --out-dir $dist
+          }
+          $setup = @(Get-ChildItem $dist -Filter '*-setup.exe')
+          if ($setup.Count -ne 1) { throw "Expected one installer in $dist" }
+          Copy-Item $setup[0] "$env:RUNNER_TEMP/$env:FIXTURE-setup.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-${{ matrix.app }}
+          path: ${{ runner.temp }}/${{ matrix.app }}-setup.exe
+          compression-level: 0
+          retention-days: 2
+
+  installed-apps:
+    needs: installers
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/tests
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: windows-installer-*
+          path: ${{ runner.temp }}/installers
+          merge-multiple: true
+      - name: Prepare WebView2 and the UI driver
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install playwright==1.56.0 psutil==7.1.3
+          $edgeRoot = "${env:ProgramFiles(x86)}/Microsoft/EdgeWebView/Application"
+          if (!(Test-Path "$edgeRoot/*/msedgewebview2.exe")) {
+            $bootstrap = Join-Path $env:RUNNER_TEMP 'WebView2Setup.exe'
+            Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $bootstrap
+            $install = Start-Process $bootstrap -ArgumentList '/silent','/install' -Wait -PassThru
+            if ($install.ExitCode) { throw "WebView2 installation failed: $($install.ExitCode)" }
+          }
+      - name: Install both products, exercise their windows, and close them
+        shell: pwsh
+        run: ./scripts/tests/windows-install.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-acceptance-evidence
+          path: ${{ runner.temp }}/windows-acceptance
+          if-no-files-found: warn
+          retention-days: 5
