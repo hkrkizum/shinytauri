@@ -15,6 +15,12 @@
 
 日本語で行うこと。
 
+## 日本語のマニュアル
+
+README と `docs/*.qmd` は常体で書く。対象読者は、既存の Shiny アプリを Windows 向けに配布する開発者である。執筆と推敲には [yomiyasu](.agents/skills/yomiyasu/SKILL.md) を使い、技術用語、コマンド、動作条件が実装と一致することを確かめる。表現の検査には `mise run docs:lint` を使う。
+
+同梱したスキルは [nanaism/yomiyasu の c49d5f1](https://github.com/nanaism/yomiyasu/tree/c49d5f1bee91258e33e1febc3569c6c87be7669e/skills/yomiyasu) の `skills/yomiyasu/` に対応する。更新時は、同梱のライセンスを含めてディレクトリ全体を入れ替える。
+
 ## 開発ルール
 
 - コード品質検証には `mise.toml` のQAタスクを一貫して使用すること

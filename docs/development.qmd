@@ -1,0 +1,92 @@
+---
+title: "開発・テスト・リリース"
+---
+
+CLI や同梱の Tauri ホストを変更する場合は、このリポジトリで作業する。自分の Shiny アプリを配布するだけなら[CLI の導入](installation.qmd)と[最初のビルド](index.qmd)を参照する。
+
+## 開発環境を用意する
+
+x86_64 Linux に Git、flakes と `nix-command` を有効にした Nix を用意する。
+
+```sh
+git clone https://github.com/hkrkizum/shinytauri.git
+cd shinytauri
+nix develop -c mise trust
+nix develop -c mise run setup
+```
+
+`setup` は Git フックを設定し、`src-shiny/` で `rig proj sync --locked` を実行する。R とパッケージはロックしたバージョンで復元され、デモのライブラリは `src-shiny/.rvenv/lib/` に入る。ロックを更新した後は `nix develop -c mise run setup:r` を実行する。
+
+## ソースの配置
+
+| 場所 | 変更対象 |
+| --- | --- |
+| `cli/` | CLI の引数、初期設定、ビルドの呼び出し、Tauri ホストの同梱 |
+| `scripts/build-windows.R`、`scripts/serve-bundled.R` | ポータブル R とパッケージの配置、インストーラーの生成、同梱 R 上でのアプリ起動 |
+| `src-tauri/`、`ui/` | Windows ホスト、ウィンドウ設定・アイコン・起動待ち画面 |
+| `src-shiny/` | Rhino デモのアプリ、レポート、R テスト、デモの依存定義 |
+| `examples/minimal/`、`bundles/` | 最小アプリと各サンプルの配布設定 |
+| `rproj.toml`、`rproj.lock` | ビルド機用 R パッケージの定義とロック |
+| `flake.nix`、`flake.lock`、`nix/`、`rust-toolchain.toml` | 開発環境、クロスビルド環境、Rust と rig のバージョン |
+| `mise.toml`、`.githooks/` | セットアップ、QA、ビルド、Git フック |
+| `docs/` | この Quarto マニュアルのソース |
+
+配布用のポータブル R を更新するときは、対応するアプリ用ロックと `scripts/build-windows.R` の SHA-256 も更新する。使用する Windows 配布物は [portable-r-windows](https://github.com/portable-r/portable-r-windows/releases) で確認できる。
+
+## デモを開発モードで起動する
+
+グラフィカルセッションで `nix develop -c mise run run:tauri` を実行すると、Tauri のウィンドウにデモが開く。ブラウザーで開発する場合は次の順に実行する。
+
+```sh
+nix develop
+cd src-shiny
+rig run dev.R
+```
+
+ブラウザーで `http://127.0.0.1:3838` を開く。どちらの開発モードも同じポートを使うので、切り替えるときは起動中のプロセスを終了する。デモの R 依存を追加する場合は `src-shiny/` で `rig proj add` を実行し、マニフェストとロックを一緒にコミットする。
+
+既存の mise タスクでデモの Windows インストーラーを生成することもできる。
+
+```sh
+nix develop .#windows -c mise trust
+nix develop .#windows -c mise run build:windows
+nix develop .#windows -c mise run build:windows bundles/minimal/bundle.toml
+```
+
+Windows ネイティブ開発では[ビルドツール](installation.qmd)に加えて mise と Nushell を用意し、`mise trust` の後に `mise run build:windows` を実行する。mise タスクの出力先は `src-tauri/target/<target>/release/bundle/nsis/` で、Linux では `x86_64-pc-windows-gnu`、Windows では `x86_64-pc-windows-msvc` が `<target>` に入る。
+
+## QA とフック
+
+リポジトリのルートで `nix develop` に入り、mise タスクを実行する。
+
+| コマンド | 確認内容 |
+| --- | --- |
+| `mise run QA` | フォーマットと lint。`format`、`lint` で個別実行、`QA-fix` で自動修正して再検査できる。 |
+| `mise run test:cli` | CLI の引数と初期化、作業場所の分離、同梱ホスト |
+| `mise run test:bundle` | 配布ファイル、Windows 用ロック、パッケージ、成果物の生成 |
+| `mise run test` | CLI と配布構成、Rhino 単体テスト、shinytest2 のブラウザーテスト、Tauri の nextest |
+| `mise run test-full` | `SHINYTAURI_HEAVY_TESTS=1` で 10 万回のサイコロ集計など重いケースも実行 |
+| `mise run QA-ci`、`mise run QA-full` | `QA` に、それぞれ通常のテストまたは全テストを組み合わせる。 |
+
+デモの R テストは `src-shiny/tests/testthat/` に置く。`test-shinytest2*.R` は Chromium で操作とレポート内容を確認するテストで、それ以外は `test:testthat` の対象になる。Rust の重いテストは `#[ignore]`、R は `SHINYTAURI_HEAVY_TESTS` で実行条件を指定する。
+
+`setup` はクローンに `core.hooksPath=.githooks` と `merge.ff=false` を設定する。`mise run setup:check` は設定値とフックの実行権限を検査する。作業ブランチへのコミットでは `QA`、マージと競合解消後のマージコミットでは `QA-full` が動く。`main` への直接のコミットと amend はフックで拒否する。
+
+## マニュアルを確認する
+
+```sh
+nix develop .#docs -c mise run docs:build
+nix develop .#docs -c quarto preview docs
+```
+
+文体や表記を確認するときは `nix develop .#docs -c mise run docs:lint` で README とマニュアルを検査し、指摘された文を前後の文と照らして推敲する。生成先は `docs/_site/` である。`preview` が表示した URL を開き、ページ移動とコード例を確認する。プルリクエストでは GitHub Actions が HTML の生成を検証する。`main` への取り込み後、Actions が [GitHub Pages](https://hkrkizum.github.io/shinytauri/) に公開する。初めて公開するリポジトリでは Settings の Pages で公開元に GitHub Actions を選ぶ。
+
+## CLI をリリースする
+
+CLI の配布には [dist](https://opensource.axo.dev/cargo-dist/) を使う。バージョンとターゲットを確認し、リポジトリのルートでリリース予定のアーカイブを一覧する。次は `0.1.0` の例である。
+
+```sh
+dist plan --tag v0.1.0
+```
+
+`cli-v<バージョン>` タグのリリースワークフローが各 OS 用のアーカイブを生成する。Windows の受け入れ試験では別プロジェクトとして初期化した最小アプリと Rhino デモをインストールし、WebView2 の操作、Quarto レポート生成、ウィンドウ終了時の R プロセスを確認する。リリース時にはビルド機に合う CLI のアーカイブとチェックサムを配布する。

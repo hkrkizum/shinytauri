@@ -44,10 +44,29 @@ depends     = ["fix:*"]
 description = "Apply available fixes, then run all formatting and lint checks"
 run         = [{ task = "QA" }]
 
+# Documentation ────────────────────────────────────────────────────────────────
+[tasks."docs:build"]
+description = "Render the Japanese CLI manual"
+run         = "quarto render docs"
+
+[tasks."docs:lint"]
+description = "Review Japanese wording in the README and manual with yomiyasu"
+run = """
+for doc in ([README.md] | append (glob 'docs/*.qmd')) {
+  python3 .agents/skills/yomiyasu/scripts/yomiyasu_lint.py --doc-type manual $doc
+}
+"""
+
 # Tests ────────────────────────────────────────────────────────────────────────
 [tasks.test]
-depends     = ["test:testthat", "test:shinytest2", "test:tauri", "test:bundle"]
-description = "Run Rhino, browser, Tauri and bundle tests in parallel"
+depends = [
+  "test:testthat",
+  "test:shinytest2",
+  "test:tauri",
+  "test:bundle",
+  "test:cli",
+]
+description = "Run Rhino, browser, Tauri, bundle and CLI tests in parallel"
 
 [tasks.test-full]
 description = "Run all test suites including heavy cases"
@@ -64,6 +83,11 @@ description = "Run Rhino browser tests with shinytest2"
 dir         = "src-shiny"
 env         = { NOT_CRAN = "true" }
 run         = """rig run -e 'rhino::test_r(filter = "^shinytest2")'"""
+
+[tasks."test:cli"]
+description = "Test the standalone CLI and its embedded desktop host"
+dir         = "cli"
+run         = "cargo test --locked"
 
 [tasks."test:bundle"]
 description = "Test packaging with the locked build R environment"
@@ -84,6 +108,11 @@ cargo nextest run --locked --run-ignored $ignored
 [tasks.format]
 depends     = ["fmt:*"]
 description = "Check formatting across all languages"
+
+[tasks."fmt:cli"]
+description = "Check Rust formatting in the CLI"
+dir         = "cli"
+run         = "cargo fmt --check"
 
 [tasks."fmt:nu"]
 description = "Check Nushell formatting with nufmt"
@@ -110,6 +139,11 @@ run         = "air format --check ."
 depends     = ["lint:*"]
 description = "Run linters across all languages"
 
+[tasks."lint:cli"]
+description = "Lint CLI commands and tests"
+dir         = "cli"
+run         = "cargo clippy --locked --all-targets -- -D warnings"
+
 [tasks."lint:nu"]
 description = "Lint Nushell scripts with nu-lint"
 hide        = true
@@ -130,6 +164,11 @@ run         = "taplo lint"
 description = "Lint R files with Jarl"
 hide        = true
 run         = "jarl check ."
+
+[tasks."fix:cli"]
+description = "Format the standalone CLI"
+dir         = "cli"
+run         = "cargo fmt"
 
 [tasks."fix:nu"]
 description = "Apply nu-lint fixes and format Nushell scripts with nufmt"

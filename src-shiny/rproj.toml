@@ -26,5 +26,6 @@ prefer-binary = true
 r-versions    = ["4.6.2"]
 
 [dependency-groups.dev]
+callr      = "*"
 shinytest2 = "*"
 testthat   = "*"

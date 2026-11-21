@@ -1,0 +1,35 @@
+---
+title: "Rhino デモを動かす"
+---
+
+リポジトリの `src-shiny/` に Rhino 製のサイコロ集計アプリがある。2 個のサイコロを振った結果を集計し、Quarto のダッシュボードを HTML ファイルとして保存できる。素の Shiny アプリと配布設定を比べるには `examples/minimal/` と `bundles/minimal/` を使う。
+
+## デモのインストーラーを作る
+
+[CLI とビルド環境](installation.qmd)を準備する。リポジトリのルートで次のコマンドを実行する。
+
+```sh
+shinytauri build --config bundles/rhino.toml --out-dir dist/rhino
+shinytauri build --config bundles/minimal/bundle.toml --out-dir dist/minimal
+```
+
+Rhino の設定は `src-shiny/rproj.lock` を指定し、Quarto も同梱する。最小例は `app.R` と `www/` を配布し、デモとは別の製品名と識別子を使う。
+
+## 集計結果をレポートに保存する
+
+1. Windows に Rhino デモをインストールして **shinytauri** を起動する。
+2. 「サイコロ集計」で「1 を足す」を押し、試行回数を選んで「サイコロを振る」を押す。集計中もカウンターを操作できる。
+3. 集計が終わったら「レポート」に移動し、「レポートを作成」を押す。
+4. 表示された「ダウンロード」から `dice-dashboard.html` を保存し、ブラウザーで開く。
+
+レポートに入るのは、作成ボタンを押したときのカウンター値と直近の集計結果である。作成中にカウンターを変えても、保存した値は変わらない。アプリ内のページを移動しても同じセッションのカウンターと集計結果は保持される。
+
+分布表は「合計」や「理論割合 (%)」で絞り込める。たとえば「2」だけを選ぶと、同じ理論割合 2.8% を持つ「2」と「12」のうち、表示中の行数は `1 / 2` になる。ダウンロードした HTML は CSS、JavaScript、画像、フォントを内包するので、別の PC にはこの 1 ファイルをコピーすればよい。プレビューサービスがスクリプトを制限する場合はローカルのブラウザーで開く。
+
+## アプリの実装
+
+`app/main.R` が画面とモジュールを接続する。画面は bslib と shiny.router、モジュールは box、集計値の型は S7、分布表は DT を使う。
+
+アプリの起動時に mirai のワーカーを 4 個立ち上げる。Shiny の `ExtendedTask` がシミュレーションとレンダリングをワーカーに渡すため、待ち時間にカウンターを操作できる。デモでは集計中の操作を試せるよう 2 秒の待ち時間を設けている。[mirai と Shiny の連携](https://mirai.r-lib.org/articles/shiny.html)
+
+レポートのレイアウトは `app/report/dashboard.qmd`、生成処理は `app/logic/report.R` にある。Quarto と knitr の出力後、アプリが CSS やスクリプトの `data:` URL を復号して HTML に埋め込む。コードを変更してアプリを再起動する手順は[開発とテスト](development.qmd)を参照する。
