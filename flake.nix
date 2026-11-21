@@ -92,6 +92,23 @@
         let
           rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
           rustVersion = (builtins.fromTOML (builtins.readFile ./rust-toolchain.toml)).toolchain.channel;
+          windowsRust = pkgs.rust-bin.stable.${rustVersion}.minimal.override {
+            targets = [ "x86_64-pc-windows-gnu" ];
+          };
+          windowsBuildTools = with pkgs; [
+            windowsRust
+            stdenv.cc # Native build scripts and procedural macros
+            pkgsCross.mingwW64.stdenv.cc
+            nsis
+            git
+          ];
+          # Tauri probes `rustup target list` on PATH. Only expose the Nix
+          # toolchain and its native tools to this subprocess: a host rustup
+          # describes a different sysroot from the compiler doing the build.
+          windowsTauri = pkgs.writeShellScriptBin "cargo-tauri" ''
+            export PATH=${pkgs.lib.makeBinPath (windowsBuildTools ++ pkgs.stdenv.initialPath)}
+            exec ${pkgs.cargo-tauri}/bin/cargo-tauri "$@"
+          '';
           rig = pkgs.callPackage ./nix/rig.nix { };
         in
         {
@@ -110,18 +127,16 @@
               ];
             };
           windows = pkgs.mkShell {
-            packages = with pkgs; [
-              (rust-bin.stable.${rustVersion}.minimal.override {
-                targets = [ "x86_64-pc-windows-gnu" ];
-              })
-              pkgsCross.mingwW64.stdenv.cc
-              cargo-tauri
-              nsis
-              rig
-              nushell
-              mise
-            ];
+            packages =
+              windowsBuildTools
+              ++ (with pkgs; [
+                windowsTauri
+                rig
+                nushell
+                mise
+              ]);
             env = {
+              SHINYTAURI_CARGO_TAURI = "${windowsTauri}/bin/cargo-tauri";
               SHINYTAURI_WINDOWS_SHELL = "1";
               R_LD_LIBRARY_PATH = "$ORIGIN/../../lib";
               NIX_LDFLAGS_x86_64_w64_mingw32 = "-L${pkgs.pkgsCross.mingwW64.windows.pthreads}/lib";
