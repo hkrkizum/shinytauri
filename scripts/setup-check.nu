@@ -9,9 +9,11 @@ def check-setting [key: string, expected: string] {
 
 check-setting core.hooksPath .githooks
 check-setting merge.ff "false"
-let hook = (git rev-parse --git-path hooks/pre-commit)
-if ($hook | path expand | path type) != file or (test -x $hook | complete).exit_code != 0 {
-    print --stderr $"FAIL  Expected an executable pre-commit hook at ($hook)"
-    exit 1
+for name in [pre-commit pre-merge-commit] {
+    let hook = (git rev-parse --git-path $"hooks/($name)")
+    if ($hook | path expand | path type) != file or (test -x $hook | complete).exit_code != 0 {
+        print --stderr $"FAIL  Expected an executable hook at ($hook)"
+        exit 1
+    }
+    print $"OK  ($hook) is executable"
 }
-print $"OK  ($hook) is executable"

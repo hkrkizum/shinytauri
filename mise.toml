@@ -22,7 +22,7 @@ hide        = true
 run         = "rig proj sync --locked"
 
 [tasks."setup:check"]
-description = "Verify the local Git settings and the pre-commit hook"
+description = "Verify local Git settings and executable commit and merge hooks"
 hide        = true
 run         = "nu --no-config-file scripts/setup-check.nu"
 
