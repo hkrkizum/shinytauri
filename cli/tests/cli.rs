@@ -346,3 +346,55 @@ fn init_accepts_explicit_packages_without_any_project_manager() {
     assert_eq!(settings["lock"].as_str(), Some(".shinytauri/windows.lock"));
     assert!(!app.path().join("rproj.toml").exists());
 }
+
+#[test]
+fn init_with_a_portable_r_version_resolves_shiny_for_that_version() {
+    let app = tempdir().unwrap();
+    fs::write(app.path().join("app.R"), "").unwrap();
+    for invalid in ["latest", "4.5", "4.05.3", "4.5.3/extra"] {
+        let result = cli(
+            app.path(),
+            &["init", "--id", "org.example.app", "--r-version", invalid],
+        );
+        assert!(!result.status.success());
+        assert!(!app.path().join("shinytauri.toml").exists());
+    }
+    let result = cli(
+        app.path(),
+        &["init", "--id", "org.example.app", "--r-version", "4.5.3"],
+    );
+    assert!(result.status.success(), "{result:?}");
+    let settings = spec(app.path());
+    assert_eq!(settings["rVersion"].as_str(), Some("4.5.3"));
+    assert_eq!(settings["lock"].as_str(), Some(".shinytauri/windows.lock"));
+    assert_eq!(settings["checkMinimal"].as_bool(), Some(true));
+    assert!(!app.path().join(".shinytauri/rproj.lock").exists());
+}
+
+#[test]
+fn init_selects_the_matching_windows_target_in_existing_rig_locks() {
+    let app = tempdir().unwrap();
+    fs::write(app.path().join("app.R"), "").unwrap();
+    let target = "[[targets]]\nplatform='x86_64-w64-mingw32'\nr_version='4.5.3'\n[[targets.packages]]\npackage='shiny'\ngroups=['main']\n";
+    let lock = format!("{target}{}", target.replace("4.5.3", "4.6.2"));
+    fs::write(app.path().join("rproj.lock"), &lock).unwrap();
+    let result = cli(app.path(), &["init", "--id", "org.example.app"]);
+    assert!(!result.status.success());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("--r-version"));
+    let missing = cli(
+        app.path(),
+        &["init", "--id", "org.example.app", "--r-version", "4.5.0"],
+    );
+    assert!(!missing.status.success());
+    let selected = cli(
+        app.path(),
+        &["init", "--id", "org.example.app", "--r-version", "4.5.3"],
+    );
+    assert!(selected.status.success(), "{selected:?}");
+    assert_eq!(spec(app.path())["lock"].as_str(), Some("rproj.lock"));
+    assert_eq!(spec(app.path())["rVersion"].as_str(), Some("4.5.3"));
+    assert_eq!(
+        fs::read_to_string(app.path().join("rproj.lock")).unwrap(),
+        lock
+    );
+}
