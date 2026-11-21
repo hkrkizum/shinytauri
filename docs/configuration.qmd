@@ -42,6 +42,14 @@ quarto = false
 
 同じ PC に複数のアプリを入れる場合は、製品ごとに `productName` と `identifier` の両方を変える。同じ製品を更新するときは両方を保ち、`version` を上げる。
 
+## 作成者・ライセンス・アイコン
+
+`shinytauri.toml` には作成者名、ライセンス、アプリアイコンを指定する項目はない。Windows の「インストールされているアプリ」に表示する発行元には、既定で `identifier` の 2 番目の要素を使う。たとえば `jp.example.counter` の発行元は `example` になる。
+
+アプリ自身のライセンス文を一緒に配布するには、アプリ直下に `LICENSE.txt` を置き、`files` にその名前を加える。インストール先では `offline/app/LICENSE.txt` に入る。ホストの MIT ライセンスは別に `offline/LICENSE` に入る。
+
+発行元を明示する場合や、インストーラーにライセンスの同意画面を設ける場合は、shinytauri のソースで `src-tauri/tauri.conf.json` の `bundle.publisher` または `bundle.licenseFile` を設定する。アプリアイコンを変更するには `bundle.icon` で参照する `src-tauri/icons/` の画像を差し替える。新しいファイルを参照する場合は `cli/src/template.rs` の同梱一覧にも加える。リポジトリのルートで `cargo install --locked --path cli --force` を実行し、その CLI でアプリを再ビルドする。[Tauri のバンドル設定](https://v2.tauri.app/reference/config/#bundleconfig)
+
 ## 同梱ファイルを選ぶ
 
 `init` は `app.R` または `ui.R` と `server.R` の組を探す。`global.R`、`R/`、`www/`、`data/` にある実行用ファイルも初期設定に含める。`rhino.yml` があるアプリでは `app/` や `config.yml` も対象になる。独自の場所にあるテンプレートや辞書は `files` に追記する。
