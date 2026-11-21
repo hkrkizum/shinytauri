@@ -73,6 +73,10 @@ name = "xml2"
 constraint = "*"
 
 [[targets.direct_dependencies]]
+name = "callr"
+constraint = "*"
+
+[[targets.direct_dependencies]]
 name = "shinytest2"
 constraint = "*"
 
@@ -1673,6 +1677,10 @@ constraint = "*"
 
 [[targets.direct_dependencies]]
 name = "xml2"
+constraint = "*"
+
+[[targets.direct_dependencies]]
+name = "callr"
 constraint = "*"
 
 [[targets.direct_dependencies]]
