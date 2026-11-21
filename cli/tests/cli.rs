@@ -308,3 +308,41 @@ fn init_records_empty_directories_separately_from_files() {
     assert_eq!(strings("files"), ["app.R", "rhino.yml"]);
     assert_eq!(strings("emptyDirs"), ["app/static", "data/private", "www"]);
 }
+
+#[test]
+fn init_uses_external_dependency_metadata_without_creating_a_rig_project() {
+    for source in ["DESCRIPTION", "renv.lock"] {
+        let app = tempdir().unwrap();
+        fs::write(app.path().join("app.R"), "").unwrap();
+        fs::write(app.path().join(source), "fixture").unwrap();
+        let result = cli(app.path(), &["init", "--id", "org.example.managed"]);
+        assert!(result.status.success(), "{result:?}");
+        let settings = spec(app.path());
+        assert_eq!(settings["dependencyFile"].as_str(), Some(source));
+        assert_eq!(settings["lock"].as_str(), Some(".shinytauri/windows.lock"));
+        assert!(!app.path().join(".shinytauri").exists());
+    }
+}
+
+#[test]
+fn init_accepts_explicit_packages_without_any_project_manager() {
+    let app = tempdir().unwrap();
+    fs::write(app.path().join("app.R"), "").unwrap();
+    let result = cli(
+        app.path(),
+        &[
+            "init",
+            "--id",
+            "org.example.list",
+            "--package",
+            "stringr=1.6.0",
+            "--package",
+            "DT",
+        ],
+    );
+    assert!(result.status.success(), "{result:?}");
+    let settings = spec(app.path());
+    assert_eq!(settings["packages"].as_array().unwrap().len(), 2);
+    assert_eq!(settings["lock"].as_str(), Some(".shinytauri/windows.lock"));
+    assert!(!app.path().join("rproj.toml").exists());
+}

@@ -27,6 +27,18 @@ enum Commands {
         /// Stable reverse-domain identifier for installation and upgrades.
         #[arg(long)]
         id: String,
+        /// Additional CRAN runtime package, optionally pinned as NAME=VERSION. Repeat as needed.
+        #[arg(long = "package")]
+        packages: Vec<String>,
+    },
+    /// Resolve Windows runtime dependencies and write the reviewable Windows lock.
+    Lock {
+        /// Directory containing shinytauri.toml (defaults to the current directory).
+        #[arg(conflicts_with = "config")]
+        app: Option<PathBuf>,
+        /// Explicit path to a bundle TOML, relative to the current directory.
+        #[arg(long)]
+        config: Option<PathBuf>,
     },
     /// Build the Windows installer from an app directory or a bundle TOML.
     Build {
@@ -44,12 +56,13 @@ enum Commands {
 
 fn main() -> ExitCode {
     let result = match Cli::parse().command {
-        Commands::Init { app, id } => init::initialize(&app, &id),
+        Commands::Init { app, id, packages } => init::initialize(&app, &id, packages),
+        Commands::Lock { app, config } => build::execute(app, config, build::Action::Lock),
         Commands::Build {
             app,
             config,
             out_dir,
-        } => build::build(app, config, out_dir),
+        } => build::execute(app, config, build::Action::Build(out_dir)),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

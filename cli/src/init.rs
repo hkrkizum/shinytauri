@@ -129,7 +129,7 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn initialize(app: &Path, id: &str) -> Result<()> {
+pub(crate) fn initialize(app: &Path, id: &str, packages: Vec<String>) -> Result<()> {
     check_identifier(id)?;
     let app = fs::canonicalize(app).map_err(|err| format!("{}: {err}", app.display()))?;
     let config = app.join(PROFILE);
@@ -147,13 +147,37 @@ pub(crate) fn initialize(app: &Path, id: &str) -> Result<()> {
     if has_lock {
         validate_lock(&root_lock)?;
     }
-    let use_minimal = !has_lock && !has_manifest;
-    let lock = if use_minimal {
+    if (has_lock || has_manifest) && !packages.is_empty() {
+        return Err("The app already has rig metadata. Declare additional packages there.".into());
+    }
+    let mut dependency_file = None;
+    if !has_lock && !has_manifest {
+        for name in ["renv.lock", "DESCRIPTION"] {
+            if entry(&app.join(name))?.is_some() {
+                dependency_file = Some(name);
+                break;
+            }
+        }
+    }
+    let managed = dependency_file.is_some() || !packages.is_empty();
+    let use_minimal = !has_lock && !has_manifest && !managed;
+    let lock = if managed {
+        ".shinytauri/windows.lock"
+    } else if use_minimal {
         ".shinytauri/rproj.lock"
     } else {
         "rproj.lock"
     };
     let mut table = Table::new();
+    if let Some(source) = dependency_file {
+        table.insert("dependencyFile".into(), source.into());
+    }
+    if !packages.is_empty() {
+        table.insert("packages".into(), packages.into());
+    }
+    if use_minimal {
+        table.insert("checkMinimal".into(), true.into());
+    }
     for (key, value) in [
         ("app", "."),
         ("lock", lock),
@@ -194,11 +218,15 @@ pub(crate) fn initialize(app: &Path, id: &str) -> Result<()> {
         }
         result?;
         println!(
-            "The bundled lock contains shiny and its dependencies. For other packages, edit .shinytauri/rproj.toml and run rig proj lock in .shinytauri/."
+            "The bundled lock contains shiny and its dependencies. For other dependencies, set packages in shinytauri.toml, set lock to .shinytauri/windows.lock, remove checkMinimal, then run shinytauri lock."
         );
     } else {
         write_new(&config, document.as_bytes())?;
-        if !has_lock {
+        if managed {
+            println!(
+                "Run shinytauri lock with this app directory to resolve its Windows runtime packages. Commit the resulting .shinytauri/windows.lock with your app."
+            );
+        } else if !has_lock {
             println!(
                 "Before building, configure your Windows target and run rig proj lock beside rproj.toml."
             );

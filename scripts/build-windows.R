@@ -101,10 +101,14 @@ stage_packages <- function(target, stage, payload) {
   )
 }
 
-read_bundle <- function(path) {
+read_bundle <- function(path, for_lock = FALSE) {
   spec <- RcppTOML::parseTOML(path)
-  base <- dirname(path)
-  for (key in c("app", "lock")) {
+  base <- dirname(absolute_path(path))
+  spec$managed <- !is.null(spec$dependencyFile) || !is.null(spec$packages)
+  if (spec$managed && !identical(spec$lock, ".shinytauri/windows.lock")) {
+    stop("For managed dependencies set lock = \".shinytauri/windows.lock\".")
+  }
+  for (key in intersect(c("app", "lock", "dependencyFile"), names(spec))) {
     value <- spec[[key]]
     if (!is.character(value) || length(value) != 1L || !nzchar(value)) {
       stop("Missing ", key, " in ", path)
@@ -113,6 +117,13 @@ read_bundle <- function(path) {
       value
     } else {
       file.path(base, value)
+    }
+    if (key == "lock" && spec$managed) {
+      spec$lock <- path_value
+      if (!for_lock && !file.exists(path_value)) {
+        stop("Missing Windows lock: run shinytauri lock for this project.")
+      }
+      next
     }
     if (key == "lock" && !file.exists(path_value)) {
       stop(
@@ -124,8 +135,24 @@ read_bundle <- function(path) {
       )
     }
     spec[[key]] <- normalizePath(path_value, winslash = "/", mustWork = TRUE)
+    if (
+      key == "lock" &&
+        identical(value, ".shinytauri/rproj.lock") &&
+        is.null(spec$checkMinimal)
+    ) {
+      # The 0.1.0 CLI copied its built-in lock verbatim (LF or CRLF checkout).
+      # A separately resolved application lock still owns its dependencies.
+      spec$checkMinimal <- unname(tools::sha256sum(path_value)) %in%
+        c(
+          "85384c4ddaee1162eb7749df066c9bd679d60b012a7d74a3c54df90701023783",
+          "19aa92b54da9bf47aa52d889a1377e8e8db06e9af754934812c1e9024b4d63a3"
+        )
+    }
   }
-  if (!dir.exists(spec$app)) {
+  if (is.null(spec$lock)) {
+    stop("Missing lock in ", path)
+  }
+  if (is.null(spec$app) || !dir.exists(spec$app)) {
     stop("Expected app directory: ", spec$app)
   }
   for (key in c("files", "emptyDirs")) {
@@ -392,8 +419,14 @@ publish_installer <- function(target_dir, triple, output, sources) {
 build_windows <- function(profile, output = NULL, engine = getwd()) {
   options(timeout = max(120L, getOption("timeout")))
   spec <- read_bundle(profile)
-  target <- windows_target(spec$lock)
   engine <- absolute_path(engine)
+  if (spec$managed || isTRUE(spec$checkMinimal)) {
+    source(file.path(engine, "scripts/runtime-deps.R"), local = TRUE)
+  }
+  target <- windows_target(spec$lock)
+  if (spec$managed) {
+    verify_runtime_lock(spec, target)
+  }
   if (!is.null(output)) {
     output <- absolute_path(output)
   }
@@ -406,6 +439,9 @@ build_windows <- function(profile, output = NULL, engine = getwd()) {
   on.exit(unlink(stage, recursive = TRUE), add = TRUE)
   payload <- file.path(stage, "payload")
   stage_app(spec, file.path(payload, "app"), output)
+  if (isTRUE(spec$checkMinimal)) {
+    check_minimal_imports(file.path(payload, "app"), target)
+  }
   stage_runtime(target, stage, payload)
   if (spec$quarto) {
     stage_quarto(stage, payload)
@@ -474,9 +510,14 @@ if (sys.nframe() == 0L) {
   # Rscript encodes spaces in its --file argument on Unix.
   script <- gsub("~+~", " ", script, fixed = TRUE)
   engine <- dirname(dirname(normalizePath(script, mustWork = TRUE)))
-  build_windows(
-    if (length(args)) args[[1L]] else file.path(engine, "bundles/rhino.toml"),
-    if (length(args) == 2L) args[[2L]] else NULL,
-    engine
-  )
+  if (length(args) == 2L && identical(args[[1L]], "--lock")) {
+    source(file.path(engine, "scripts/runtime-deps.R"))
+    lock_windows(read_bundle(args[[2L]], for_lock = TRUE))
+  } else {
+    build_windows(
+      if (length(args)) args[[1L]] else file.path(engine, "bundles/rhino.toml"),
+      if (length(args) == 2L) args[[2L]] else NULL,
+      engine
+    )
+  }
 }

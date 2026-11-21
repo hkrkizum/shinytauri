@@ -342,3 +342,4 @@ check_cli_entry <- function() {
   expect_bundle_error(read_bundle(profile), "productName")
 }
 check_cli_entry()
+source("scripts/tests/test-runtime-deps.R")
