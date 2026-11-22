@@ -35,8 +35,26 @@ impl Checks {
     fn rig(&mut self) {
         self.report(
             "rig",
-            query("rig", &["--version"]),
+            query("rig", &["--version"]).filter(|_| {
+                query("rig", &["proj", "sync", "--help"])
+                    .is_some_and(|help| help.split_whitespace().any(|word| word == "--locked"))
+            }),
             "Install rig 0.11.1 and add it to PATH.",
+        );
+    }
+    fn tauri(&mut self, default: impl FnOnce() -> Option<String>) {
+        let output = match env::var_os("SHINYTAURI_CARGO_TAURI").filter(|path| !path.is_empty()) {
+            Some(path) => query(path, &["--version"]),
+            None => default(),
+        };
+        self.report(
+            "Tauri CLI",
+            output.filter(|text| {
+                text.split_whitespace()
+                    .last()
+                    .is_some_and(|v| v.starts_with("2."))
+            }),
+            "Install Tauri CLI 2 (cargo install tauri-cli --version 2.12.6 --locked).",
         );
     }
 }
@@ -50,15 +68,11 @@ fn linux(checks: &mut Checks) {
             query("cargo", &["--version"]),
             "Re-enter the windows Nix shell.",
         );
-        let tauri = env::var_os("SHINYTAURI_CARGO_TAURI");
-        let version = match tauri {
-            Some(path) => query(path, &["--version"]),
-            None => query("cargo", &["tauri", "--version"]),
-        };
-        checks.report("Tauri CLI", version, "Re-enter the windows Nix shell.");
+        checks.tauri(|| query("cargo", &["tauri", "--version"]));
         checks.report(
             "MinGW-w64",
-            query("x86_64-w64-mingw32-gcc", &["-dumpmachine"]),
+            query("x86_64-w64-mingw32-gcc", &["-dumpmachine"])
+                .filter(|target| target == "x86_64-w64-mingw32"),
             "Re-enter the windows Nix shell.",
         );
         checks.report(
@@ -111,18 +125,12 @@ fn windows(checks: &mut Checks) -> Result<()> {
         &format!("Install rustup and run rustup toolchain install {toolchain}."),
     );
     checks.rig();
-    let tauri = match env::var_os("SHINYTAURI_CARGO_TAURI") {
-        Some(path) => query(path, &["--version"]),
-        None => query(
+    checks.tauri(|| {
+        query(
             "rustup",
             &["run", &toolchain, "cargo", "tauri", "--version"],
-        ),
-    };
-    checks.report(
-        "Tauri CLI",
-        tauri,
-        "Install cargo-tauri 2.12.6 or run cargo install tauri-cli --version 2.12.6 --locked.",
-    );
+        )
+    });
     // Use the tool discovery library shared with cc-rs; a normal PowerShell
     // session need not have cl.exe, rc.exe or the SDK libraries in PATH.
     let compiler = find_msvc_tools::find_tool(TARGET, "cl.exe")

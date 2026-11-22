@@ -58,3 +58,49 @@ fn reads_effective_nix_features_and_never_starts_a_build() {
     }
     assert_eq!(fs::read_dir(app.path()).unwrap().count(), 0);
 }
+
+#[test]
+fn cross_shell_requires_the_build_tools_used_by_the_host() {
+    let bin = tempdir().unwrap();
+    let app = tempdir().unwrap();
+    tool(
+        bin.path(),
+        "cargo",
+        "case \"$*\" in 'tauri --version') echo 'tauri-cli 2.12.6';; '--version') echo 'cargo 1.100.0';; esac",
+    );
+    tool(
+        bin.path(),
+        "rig",
+        "case \"$*\" in 'proj sync --help') echo '--locked';; '--version') echo 'rig 0.11.1';; esac",
+    );
+    tool(
+        bin.path(),
+        "x86_64-w64-mingw32-gcc",
+        "echo x86_64-w64-mingw32",
+    );
+    tool(bin.path(), "makensis", "echo v3.12");
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_shinytauri"))
+            .arg("doctor")
+            .env("PATH", bin.path())
+            .env("SHINYTAURI_WINDOWS_SHELL", "1")
+            .env("SHINYTAURI_CARGO_TAURI", "")
+            .current_dir(app.path())
+            .output()
+            .unwrap()
+    };
+    assert!(run().status.success());
+    tool(bin.path(), "cargo", "echo tauri-cli 1.6.0");
+    tool(bin.path(), "rig", "echo 'rig 0.6.2'");
+    tool(
+        bin.path(),
+        "x86_64-w64-mingw32-gcc",
+        "echo x86_64-linux-gnu",
+    );
+    let failed = run();
+    assert!(!failed.status.success());
+    let report = String::from_utf8(failed.stdout).unwrap();
+    for label in ["rig", "Tauri CLI", "MinGW-w64"] {
+        assert!(report.contains(&format!("[missing] {label}")), "{report}");
+    }
+}
