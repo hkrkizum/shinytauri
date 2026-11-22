@@ -1,5 +1,5 @@
 use crate::Result;
-use std::{fs, io::Write, path::Path};
+use std::{collections::BTreeMap, fs, io::Write, path::Path};
 use toml::{Table, Value};
 
 const PROFILE: &str = "shinytauri.toml";
@@ -29,9 +29,41 @@ fn check_identifier(id: &str) -> Result<()> {
 }
 
 #[derive(Default)]
-struct Resources {
-    files: Vec<String>,
-    empty_dirs: Vec<String>,
+pub(crate) struct Resources {
+    pub(crate) files: Vec<String>,
+    pub(crate) empty_dirs: Vec<String>,
+}
+
+pub(crate) fn check_entry_names<'a>(paths: impl IntoIterator<Item = &'a str>) -> Result<()> {
+    let mut seen = BTreeMap::new();
+    let mut check = |name: &'a str| -> Result<()> {
+        if let Some(first) = seen.insert(name.to_ascii_lowercase(), name)
+            && first != name
+        {
+            return Err(format!(
+                "Shiny entry names '{first}' and '{name}' collide on Windows. Keep one spelling."
+            )
+            .into());
+        }
+        Ok(())
+    };
+    for path in paths {
+        let mut parts = path.split('/');
+        let root = parts.next().unwrap();
+        match root.to_ascii_lowercase().as_str() {
+            "app.r" | "ui.r" | "server.r" | "global.r" => check(root)?,
+            "www" => {
+                check(root)?;
+                if let Some(child) = parts.next()
+                    && child.eq_ignore_ascii_case("index.html")
+                {
+                    check(&path[..root.len() + 1 + child.len()])?;
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 fn collect_tree(app: &Path, folder: &str, resources: &mut Resources) -> Result<()> {
@@ -59,23 +91,29 @@ fn collect_tree(app: &Path, folder: &str, resources: &mut Resources) -> Result<(
     Ok(())
 }
 
-fn resources(app: &Path) -> Result<Resources> {
+pub(crate) fn resources(app: &Path) -> Result<Resources> {
     let mut resources = Resources::default();
-    let files = &mut resources.files;
-    for name in ["app.R", "ui.R", "server.R", "global.R", "rhino.yml"] {
-        if entry(&app.join(name))?.is_some_and(|kind| kind.is_file()) {
-            files.push(name.to_owned());
+    // Read actual directory entries: looking up "app.R" loses the spelling on Windows.
+    for child in fs::read_dir(app)? {
+        let child = child?;
+        let name = child.file_name();
+        let Some(name) = name.to_str() else { continue };
+        match name.to_ascii_lowercase().as_str() {
+            "app.r" | "ui.r" | "server.r" | "global.r" if child.file_type()?.is_file() => {
+                resources.files.push(name.to_owned());
+            }
+            "www" if child.file_type()?.is_dir() => collect_tree(app, name, &mut resources)?,
+            _ => {}
         }
     }
-    let has = |name: &str| files.iter().any(|f| f == name);
-    if !(has("app.R") || has("ui.R") && has("server.R")) {
-        return Err(format!("{} needs app.R or both ui.R and server.R.", app.display()).into());
+    let rhino = entry(&app.join("rhino.yml"))?.is_some_and(|kind| kind.is_file());
+    if rhino {
+        resources.files.push("rhino.yml".into());
+        if entry(&app.join("config.yml"))?.is_some_and(|kind| kind.is_file()) {
+            resources.files.push("config.yml".into());
+        }
     }
-    let rhino = has("rhino.yml");
-    if rhino && entry(&app.join("config.yml"))?.is_some_and(|kind| kind.is_file()) {
-        files.push("config.yml".to_owned());
-    }
-    for folder in ["R", "www", "data", "app"] {
+    for folder in ["R", "data", "app"] {
         if folder == "app" && !rhino {
             continue;
         }
@@ -151,6 +189,23 @@ pub(crate) fn initialize(
         return Err(format!("{} already exists.", config.display()).into());
     }
     let resources = resources(&app)?;
+    check_entry_names(
+        resources
+            .files
+            .iter()
+            .chain(&resources.empty_dirs)
+            .map(String::as_str),
+    )?;
+    if !resources
+        .files
+        .iter()
+        .any(|name| name.eq_ignore_ascii_case("app.r") || name.eq_ignore_ascii_case("server.r"))
+    {
+        return Err(format!(
+            "{} needs a Shiny entry point: app.R or server.R (with ui.R or www/index.html for the UI).",
+            app.display()
+        ).into());
+    }
     let name = app
         .file_name()
         .and_then(|f| f.to_str())

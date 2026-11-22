@@ -424,11 +424,35 @@ copy_resource <- function(source, destination, directory_only = FALSE) {
   }
 }
 
+# Files from a case-sensitive checkout must remain distinguishable on Windows.
+check_entry_names <- function(paths) {
+  names <- unique(c(sub("/.*", "", paths), paths))
+  folded <- chartr(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "abcdefghijklmnopqrstuvwxyz",
+    names
+  )
+  entries <- folded %in%
+    c("app.r", "server.r", "ui.r", "global.r", "www", "www/index.html")
+  names <- names[entries]
+  folded <- folded[entries]
+  clash <- anyDuplicated(folded)
+  if (clash > 0L) {
+    key <- folded[[clash]]
+    stop(
+      "Shiny entry names collide on Windows: ",
+      paste(names[folded == key], collapse = ", ")
+    )
+  }
+}
+
 stage_app <- function(spec, dest, output = NULL) {
   stopifnot(dir.create(dest, recursive = TRUE))
   dest <- absolute_path(dest)
   app <- absolute_path(spec$app)
-  for (relative in unique(c(spec$files, spec$emptyDirs))) {
+  selected <- unique(c(spec$files, spec$emptyDirs))
+  check_entry_names(selected)
+  for (relative in selected) {
     source <- file.path(app, relative)
     resolved <- absolute_path(source)
     if (within_path(dest, resolved)) {
@@ -446,6 +470,16 @@ stage_app <- function(spec, dest, output = NULL) {
       directory_only = !relative %in% spec$files
     )
   }
+  # A directory selected as a whole may add entries absent from the manifest.
+  root_names <- list.files(dest)
+  www <- root_names[tolower(root_names) == "www"]
+  for (folder in www) {
+    children <- list.files(file.path(dest, folder))
+    if (length(children)) {
+      root_names <- c(root_names, file.path(folder, children))
+    }
+  }
+  check_entry_names(root_names)
   # NSIS installs files. An empty staged leaf needs a file to carry its path.
   for (directory in list.dirs(dest)) {
     if (!length(list.files(directory, all.files = TRUE, no.. = TRUE))) {

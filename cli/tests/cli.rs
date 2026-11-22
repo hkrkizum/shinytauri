@@ -71,6 +71,64 @@ fn init_a_standalone_app_can_use_the_included_windows_shiny_lock() {
 }
 
 #[test]
+fn init_preserves_shiny_entrypoint_names() {
+    for layout in [
+        vec!["app.r"],
+        vec!["GLOBAL.r", "Server.r", "Ui.R"],
+        vec!["SERVER.r", "WWW/index.html"],
+    ] {
+        let root = tempdir().unwrap();
+        for name in &layout {
+            let path = root.path().join(name);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, "").unwrap();
+        }
+        let result = cli(root.path(), &["init", "--id", "org.example.layouts"]);
+        assert!(result.status.success(), "{layout:?}: {result:?}");
+        let profile = spec(root.path());
+        let paths: Vec<_> = profile["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap())
+            .collect();
+        assert_eq!(paths, layout);
+    }
+}
+
+#[test]
+fn init_rejects_entrypoint_names_that_collide_on_windows() {
+    let probe = tempdir().unwrap();
+    fs::write(probe.path().join("case"), "").unwrap();
+    if probe.path().join("CASE").exists() {
+        return; // This filesystem cannot represent two case variants.
+    }
+    for pair in [
+        ["app.R", "APP.r"],
+        ["Ui.R", "ui.r"],
+        ["GLOBAL.R", "global.r"],
+        ["server.R", "SERVER.r"],
+        ["www/a.css", "WWW/b.css"],
+        ["www/INDEX.html", "www/index.html"],
+    ] {
+        let root = tempdir().unwrap();
+        fs::write(root.path().join("app.R"), "").unwrap();
+        for name in pair {
+            let path = root.path().join(name);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, "").unwrap();
+        }
+        let result = cli(root.path(), &["init", "--id", "org.example.duplicate"]);
+        assert!(!result.status.success(), "{pair:?}: {result:?}");
+        assert!(
+            String::from_utf8_lossy(&result.stderr).contains("Windows"),
+            "{result:?}"
+        );
+        assert!(!root.path().join("shinytauri.toml").exists());
+    }
+}
+
+#[test]
 fn init_reuses_an_app_lock_on_a_split_layout() {
     let root = tempdir().unwrap();
     let app = root.path();

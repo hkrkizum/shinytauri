@@ -99,7 +99,7 @@ jobs:
               utils::packageVersion("stringr")))
           }
           shinyApp(ui, server)
-          '@ | Set-Content "$app/app.R" -Encoding utf8NoBOM
+          '@ | Set-Content "$app/app.r" -Encoding utf8NoBOM
           } else {
             Copy-Item 'src-shiny' $app -Recurse
           }
