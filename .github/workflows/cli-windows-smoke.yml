@@ -54,7 +54,11 @@ jobs:
           }
           Install-ZipTool 'https://github.com/r-lib/rig/releases/download/v0.11.1/rig-windows-x86_64-0.11.1.zip' 'a0ce65f2afb2f016488523818d14c4596080c61f32d0dab4c123c7f5e1db8910' 'rig.exe'
           Install-ZipTool 'https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.12.6/cargo-tauri-x86_64-pc-windows-msvc.zip' '39636fa68bc00f13dd610fb57688f292e93742978cc35395f2f1be7c540b88a1' 'cargo-tauri.exe'
-      - name: Build the standalone CLI
+      - name: Build the Linux CLI in the Windows cross-build shell
+        if: runner.os == 'Linux'
+        run: nix develop --no-update-lock-file .#windows -c cargo build --locked --release --manifest-path cli/Cargo.toml
+      - name: Build the Windows CLI
+        if: runner.os == 'Windows'
         run: cargo build --locked --release --manifest-path cli/Cargo.toml
       - name: Test the CLI on Windows
         if: runner.os == 'Windows'
