@@ -1,0 +1,2 @@
+検証用 Shiny アプリの利用規約
+Windows installer acceptance fixture.

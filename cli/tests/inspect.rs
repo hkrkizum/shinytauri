@@ -204,3 +204,59 @@ fn checks_name_collisions_only_in_the_selected_tree() {
     assert!(!result.status.success());
     assert!(String::from_utf8_lossy(&result.stderr).contains("collide"));
 }
+
+#[test]
+fn reports_explicit_installer_inputs_relative_to_the_config() {
+    let root = tempdir().unwrap();
+    let config_dir = root.path().join("packaging");
+    let assets = root.path().join("branding");
+    fs::create_dir(&config_dir).unwrap();
+    fs::create_dir(&assets).unwrap();
+    let icon = assets.join("app.ico");
+    let license = assets.join("利用条件.txt");
+    fs::write(&icon, include_bytes!("../../src-tauri/icons/icon.ico")).unwrap();
+    fs::write(&license, "取扱規約の本文は表示しない").unwrap();
+    fs::write(root.path().join("app.R"), "").unwrap();
+    fs::write(config_dir.join("runtime.lock"), LOCK).unwrap();
+    let config = config_dir.join("spec.toml");
+    let base = "app='..'\nlock='runtime.lock'\nfiles=['app.R']";
+    let args = ["--config", "packaging/spec.toml"];
+    fs::write(&config, base).unwrap();
+    let plain = inspect(root.path(), &args);
+    assert!(plain.status.success());
+    let plain_text = String::from_utf8(plain.stdout).unwrap();
+    for label in ["Publisher:", "Installer icon:", "Installer license:"] {
+        assert!(!plain_text.contains(label));
+    }
+
+    fs::write(&config, format!("{base}\npublisher='集計部門'\nicon='../branding/app.ico'\nlicenseFile='../branding/利用条件.txt'")).unwrap();
+    let branded = inspect(root.path(), &args);
+    assert!(branded.status.success(), "{branded:?}");
+    let report = String::from_utf8(branded.stdout).unwrap();
+    assert_eq!(section(&report, "Included files:"), ["app.R"]);
+    assert!(report.contains("Publisher: 集計部門"));
+    assert!(report.contains(&format!(
+        "Installer icon: {}",
+        icon.canonicalize().unwrap().display()
+    )));
+    assert!(report.contains(&format!(
+        "Installer license: {}",
+        license.canonicalize().unwrap().display()
+    )));
+    assert!(!report.contains("取扱規約の本文"));
+
+    for (extra, key) in [
+        ("icon='lost.ico'", "icon"),
+        ("licenseFile='lost.txt'", "licenseFile"),
+        ("publisher=' '", "publisher"),
+        ("icon='../branding'", "icon"),
+    ] {
+        fs::write(&config, format!("{base}\n{extra}")).unwrap();
+        let invalid = inspect(root.path(), &args);
+        assert!(!invalid.status.success(), "{invalid:?}");
+        assert!(
+            String::from_utf8_lossy(&invalid.stderr).contains(key),
+            "{invalid:?}"
+        );
+    }
+}

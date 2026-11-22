@@ -20,6 +20,9 @@ try {
         $product = "shinytauri-smoke-$kind"
         $installer = Get-Item "$env:RUNNER_TEMP/installers/$kind-setup.exe"
         Block-External $installer.FullName
+        if ($kind -eq 'rhino') {
+            python "$PSScriptRoot/windows-branding.py" setup $installer.FullName (Join-Path $evidence.FullName 'installer-license.png')
+        }
         $install = Start-Process $installer.FullName -ArgumentList '/S' -Wait -PassThru
         if ($install.ExitCode) { throw "$product setup failed: $($install.ExitCode)" }
         $key = Get-ItemProperty "HKCU:/Software/Microsoft/Windows/CurrentVersion/Uninstall/$product"
@@ -30,6 +33,12 @@ try {
             throw 'The installed Rhino app is missing its static resource directory'
         }
         $hosts[$kind] = (Get-Item (Join-Path $dir $key.MainBinaryName)).FullName
+        if ($kind -eq 'rhino') {
+            if ($key.Publisher -ne '販売 株式会社' -or (Get-Item $hosts[$kind]).VersionInfo.CompanyName -ne $key.Publisher) {
+                throw 'The installed Rhino publisher does not match its configured publisher'
+            }
+            python "$PSScriptRoot/windows-branding.py" host $hosts[$kind]
+        }
         foreach ($exe in Get-ChildItem $dir -Filter '*.exe' -File -Recurse) {
             Block-External $exe.FullName
         }

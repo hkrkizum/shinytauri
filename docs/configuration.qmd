@@ -39,17 +39,28 @@ quarto = false
 | `identifier` | アプリを識別する値。初期化時は `--id jp.example.counter` のように組織と製品に固有の値を渡す。 |
 | `version` | 製品のバージョン。`1.2.3` のように整数を3個並べ、ピリオドで区切る。 |
 | `title` | ウィンドウのタイトル。省略すると、指定した `productName` を使う。 |
+| `publisher` | Windows の「インストールされているアプリ」とアプリの実行ファイルに表示する発行元。 |
+| `icon` | アプリとインストーラーに使う Windows アイコン（`.ico`）。 |
+| `licenseFile` | インストーラーの同意画面に表示する UTF-8 のテキストファイル。 |
 | `quarto` | `true` なら Windows 用 Quarto CLI を同梱する。既定値は `false`。 |
 
 同じ PC に複数のアプリを入れる場合は、製品ごとに `productName` と `identifier` の両方を変える。同じ製品を更新するときは両方を保ち、`version` を上げる。
 
-## 作成者・ライセンス・アイコン
+## 発行元・アイコン・利用規約
 
-`shinytauri.toml` には作成者名、ライセンス、アプリアイコンを指定する項目はない。Windows の「インストールされているアプリ」に表示する発行元には、既定で `identifier` の 2 番目の要素を使う。たとえば `jp.example.counter` の発行元は `example` になる。
+次の例では`shinytauri.toml` と同じディレクトリに `branding/` を置く。別のディレクトリでビルドする場合も、`icon` と `licenseFile` の相対パスは設定ファイルからたどる。
 
-アプリ自身のライセンス文を一緒に配布するには、アプリ直下に `LICENSE.txt` を置き、`files` にその名前を加える。インストール先では `offline/app/LICENSE.txt` に入る。ホストの MIT ライセンスは別に `offline/LICENSE` に入る。
+```toml
+publisher = "株式会社サンプル"
+icon = "branding/counter.ico"
+licenseFile = "branding/利用規約.txt"
+```
 
-発行元を明示する場合や、インストーラーにライセンスの同意画面を設ける場合は、shinytauri のソースで `src-tauri/tauri.conf.json` の `bundle.publisher` または `bundle.licenseFile` を設定する。アプリアイコンを変更するには `bundle.icon` で参照する `src-tauri/icons/` の画像を差し替える。新しいファイルを参照する場合は `cli/src/template.rs` の同梱一覧にも加える。リポジトリのルートで `cargo install --locked --path cli --force` を実行し、その CLI でアプリを再ビルドする。[Tauri のバンドル設定](https://v2.tauri.app/reference/config/#bundleconfig)
+`publisher` を省くと、通常は `identifier` の 2 番目の要素が発行元になる。たとえば `jp.example.counter` の発行元は `example` になる。Windows インストーラーは発行元と製品名を使ってインストール先を記録する。配布済みの製品を更新するときは、これまでの発行元を使う。
+
+`icon` を省くと、shinytauri に同梱されたアイコンを使う。
+
+`licenseFile` を指定すると、対話形式のインストール時に利用規約が表示される。省略時とサイレントインストール時には同意画面を表示しない。インストール後も規約を読めるようにするには、アプリ内に規約ファイルを置き、`files` にそのパスを加える。ホストの MIT ライセンスは `offline/LICENSE` に入る。
 
 ## 同梱ファイルを選ぶ
 
@@ -76,6 +87,8 @@ shinytauri inspect
 `Included files` は配布するファイル、`Empty directories` は中身を配布せずディレクトリだけを用意する場所である。`Not included (init candidates)` には、現在の `init` の探索範囲にあって配布対象に含まれないものが並ぶ。追加した CSS や画像を配布したい場合は、対象のパスを `files` に追記する。
 
 `Missing entries` にパスが出たら、移動したファイルのパスを設定で直すか、削除済みの項目を設定から外す。配布対象やロックが欠けているとき、設定が不正なときは終了コードが 1 になる。未登録の候補があるだけなら 0 である。`Windows R` と `Main packages` は、ロックが指定する Windows 向け R のバージョンと、`main` グループのパッケージ数を示す。依存定義とロックの照合や配布パッケージの取得はビルド時に行う。
+
+`publisher`、`icon`、`licenseFile` を指定した場合、`inspect` は発行元とインストーラー用ファイルのうち指定した項目を表示する。ファイルのパスは設定ファイルを基準に解決し、ファイルが存在して空でないことを確かめる。アイコンとライセンス文書の形式はビルド時に検証する。
 
 ## Quarto を使うアプリ
 

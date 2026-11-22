@@ -103,6 +103,9 @@ jobs:
           } else {
             Copy-Item 'src-shiny' $app -Recurse
           }
+          if ($env:FIXTURE -eq 'rhino') {
+            Copy-Item 'scripts/tests/fixtures/branding' (Join-Path $app '配布 素材') -Recurse
+          }
           Set-Location $caller
           if ($env:FIXTURE -eq 'minimal') {
             & $cli init $app --id org.example.minimal --r-version 4.5.3
@@ -115,8 +118,10 @@ jobs:
             $profile = Join-Path $app '配布.toml'
             $settings = Get-Content (Join-Path $app 'shinytauri.toml') |
               Where-Object { $_ -notmatch '^\s*(version|title|quarto)\s*=' }
-            $settings + @('version = "1.2.3"', 'title = "Rhino Smoke"', 'quarto = true') |
-              Set-Content $profile -Encoding utf8NoBOM
+            $settings + @(
+              'version = "1.2.3"', 'title = "Rhino Smoke"', 'quarto = true',
+              'publisher = "販売 株式会社"', 'icon = "配布 素材/製品.ico"', 'licenseFile = "配布 素材/利用規約.txt"'
+            ) | Set-Content $profile -Encoding utf8NoBOM
             & $cli build --config $profile --out-dir $dist
           }
           $setup = @(Get-ChildItem $dist -Filter '*-setup.exe')
@@ -146,7 +151,7 @@ jobs:
         shell: pwsh
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          python -m pip install playwright==1.56.0 psutil==7.1.3
+          python -m pip install playwright==1.56.0 psutil==7.1.3 pefile==2024.8.26 pillow==11.3.0
           $edgeRoot = "${env:ProgramFiles(x86)}/Microsoft/EdgeWebView/Application"
           if (!(Test-Path "$edgeRoot/*/msedgewebview2.exe")) {
             $bootstrap = Join-Path $env:RUNNER_TEMP 'WebView2Setup.exe'

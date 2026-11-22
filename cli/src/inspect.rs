@@ -179,16 +179,43 @@ impl Inventory {
     }
 }
 
+fn report_line(prefix: &str, value: &str) {
+    // A path or publisher can contain terminal control characters.
+    if value.chars().any(char::is_control) {
+        println!("{prefix}{}", value.escape_debug());
+    } else {
+        println!("{prefix}{value}");
+    }
+}
+
 fn group<'a>(label: &str, entries: impl IntoIterator<Item = &'a str>) {
     println!("{label}:");
     for entry in entries {
-        // Preserve usual paths, but keep control characters from affecting the terminal/report.
-        if entry.chars().any(char::is_control) {
-            println!("  {}", entry.escape_debug());
-        } else {
-            println!("  {entry}");
+        report_line("  ", entry);
+    }
+}
+
+fn installer_inputs(spec: &Table, base: &Path) -> Result<()> {
+    if let Some(publisher) = string(spec, "publisher")? {
+        report_line("Publisher: ", publisher);
+    }
+    for (key, label) in [
+        ("icon", "Installer icon: "),
+        ("licenseFile", "Installer license: "),
+    ] {
+        if let Some(source) = string(spec, key)? {
+            let path = base.join(source);
+            let meta = fs::metadata(&path)
+                .map_err(|err| format!("Installer {key} at {}: {err}", path.display()))?;
+            if !meta.is_file() || meta.len() == 0 {
+                return Err(
+                    format!("Expected a nonempty file for {key}: {}", path.display()).into(),
+                );
+            }
+            report_line(label, &path.canonicalize()?.to_string_lossy());
         }
     }
+    Ok(())
 }
 
 fn runtime(spec: &Table, base: &Path) -> Result<()> {
@@ -329,6 +356,7 @@ pub(crate) fn report(config: PathBuf) -> Result<()> {
         "Missing entries",
         inventory.missing.iter().map(String::as_str),
     );
+    installer_inputs(&spec, base)?;
     runtime(&spec, base)?;
     if !inventory.missing.is_empty() {
         return Err("Some configured app resources are missing".into());
