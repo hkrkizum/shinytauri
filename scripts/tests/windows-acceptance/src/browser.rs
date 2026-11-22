@@ -188,7 +188,7 @@ impl BrowserPage {
         Ok(())
     }
 
-    pub fn failed(&self, evidence: &Path) -> Result<()> {
+    pub fn failed(&self, screenshot: &Path, timeout: Option<u64>) -> Result<()> {
         self.visible("[data-stage='failed']", None, STARTUP)?;
         self.visible("#startup-error", None, NORMAL)?;
         ensure!(
@@ -202,7 +202,19 @@ impl BrowserPage {
             ))? == true,
             "Raw R failure leaked into the startup page"
         );
-        self.screenshot(&evidence.join("intentional-failure.png"))
+        if let Some(seconds) = timeout {
+            let matches = self.value(&format!(
+                r#"(() => {{
+                const msg = document.querySelector('#startup-error').innerText;
+                return /(?:^|[^0-9]){seconds}\s*秒/.test(msg) && msg.includes('ポート');
+            }})()"#
+            ))?;
+            ensure!(
+                matches == true,
+                "startup page omits the configured {seconds} s limit or port phase"
+            );
+        }
+        self.screenshot(screenshot)
     }
 
     pub fn check_log_links(&self, host: &str, r: &str) -> Result<()> {
@@ -411,14 +423,21 @@ mod tests {
                 );
             }
             page.value("document.querySelector('#startup-error').removeAttribute('style'); true")?;
-            page.failed(tmp.path())?;
+            page.failed(&tmp.path().join("intentional-failure.png"), None)?;
             page.check_log_links("host-21.jsonl", "shiny-21.log")?;
+            let timeout_png = tmp.path().join("startup-timeout.png");
+            page.value("document.querySelector('#startup-error').textContent = '20 秒以内にポートを受け取れませんでした'")?;
+            page.failed(&timeout_png, Some(20))?;
+            ensure!(
+                page.failed(&timeout_png, Some(0)).is_err(),
+                "accepted the wrong UI timeout"
+            );
             page.value(&format!(
                 "document.getElementById('startup-error').textContent = {}",
                 json!(FAILURE_MARKER)
             ))?;
             ensure!(
-                page.failed(tmp.path())
+                page.failed(&tmp.path().join("intentional-failure.png"), None)
                     .unwrap_err()
                     .to_string()
                     .contains("Raw R failure")
