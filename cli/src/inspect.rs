@@ -215,6 +215,19 @@ fn installer_inputs(spec: &Table, base: &Path) -> Result<()> {
             report_line(label, &path.canonicalize()?.to_string_lossy());
         }
     }
+    if let Some(source) = string(spec, "sourceBundle")? {
+        let path = base.join(source);
+        let meta = fs::symlink_metadata(&path)
+            .map_err(|err| format!("sourceBundle at {}: {err}", path.display()))?;
+        if is_link(&meta) || !(meta.is_dir() || meta.is_file() && meta.len() > 0) {
+            return Err(format!(
+                "Expected a sourceBundle directory or nonempty archive: {}",
+                path.display()
+            )
+            .into());
+        }
+        report_line("Source bundle: ", &path.canonicalize()?.to_string_lossy());
+    }
     Ok(())
 }
 

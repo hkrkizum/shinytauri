@@ -260,3 +260,38 @@ fn reports_explicit_installer_inputs_relative_to_the_config() {
         );
     }
 }
+
+#[test]
+fn reports_source_bundles_relative_to_the_config_before_building() {
+    let root = tempdir().unwrap();
+    let profiles = root.path().join("profiles");
+    let materials = root.path().join("配布用ソース");
+    fs::create_dir(&profiles).unwrap();
+    fs::create_dir(&materials).unwrap();
+    fs::write(materials.join("build.txt"), "build instructions").unwrap();
+    fs::write(root.path().join("sources.tar.gz"), "example archive").unwrap();
+    fs::write(root.path().join("app.R"), "").unwrap();
+    fs::write(profiles.join("runtime.lock"), LOCK).unwrap();
+    let args = ["--config", "profiles/spec.toml"];
+    let write_config = |source: &str| {
+        fs::write(
+            profiles.join("spec.toml"),
+            format!("app='..'\nlock='runtime.lock'\nfiles=['app.R']\nsourceBundle='../{source}'"),
+        )
+        .unwrap();
+    };
+
+    for source in ["sources.tar.gz", "配布用ソース"] {
+        write_config(source);
+        let output = inspect(root.path(), &args);
+        assert!(output.status.success(), "{output:?}");
+        let canonical = root.path().join(source).canonicalize().unwrap();
+        let report = String::from_utf8(output.stdout).unwrap();
+        assert!(report.contains(&format!("Source bundle: {}", canonical.display())));
+        assert_eq!(section(&report, "Included files:"), ["app.R"]);
+    }
+    write_config("missing.tar.gz");
+    let output = inspect(root.path(), &args);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("sourceBundle"));
+}
