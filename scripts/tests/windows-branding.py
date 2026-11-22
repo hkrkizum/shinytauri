@@ -38,6 +38,7 @@ def check_license_page(setup, screenshot):
     from PIL import ImageGrab
 
     user = c.WinDLL("user32", use_last_error=True)
+    user.SetProcessDPIAware()
     callback_type = c.WINFUNCTYPE(w.BOOL, w.HWND, w.LPARAM)
     user.GetDlgItem.argtypes = (w.HWND, c.c_int)
     user.GetDlgItem.restype = w.HWND
@@ -86,7 +87,18 @@ def check_license_page(setup, screenshot):
                             user.SendMessageW(field, 0x000D, len(text), c.addressof(text))
                             last_text = text.value
                             if all(line in last_text for line in expected):
-                                ImageGrab.grab(window=dialog).save(screenshot)
+                                # Capture the composited desktop. A window DC can omit
+                                # the installer's child controls, including the agreement.
+                                hwnd = w.HWND(dialog)
+                                user.SetForegroundWindow(hwnd)
+                                user.RedrawWindow(hwnd, None, None, 0x0181)
+                                rect = w.RECT()
+                                if not user.GetWindowRect(hwnd, c.byref(rect)):
+                                    raise c.WinError(c.get_last_error())
+                                ImageGrab.grab(
+                                    bbox=(rect.left, rect.top, rect.right, rect.bottom),
+                                    all_screens=True,
+                                ).save(screenshot)
                                 return
                     # Advance from the welcome page to the license page once.
                     next_button = user.GetDlgItem(dialog, 1)
