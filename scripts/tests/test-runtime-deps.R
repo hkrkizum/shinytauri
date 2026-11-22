@@ -100,7 +100,7 @@ check_old_minimal_profile <- function() {
   dir.create(support, recursive = TRUE)
   on.exit(unlink(app, recursive = TRUE))
   lock <- file.path(support, "rproj.lock")
-  stopifnot(file.copy("bundles/minimal/rproj.lock", lock))
+  writeLines(legacy_minimal_lock(), lock)
   profile <- file.path(app, "shinytauri.toml")
   writeLines(
     c('app = "."', 'lock = ".shinytauri/rproj.lock"', 'files = ["app.R"]'),
@@ -121,7 +121,7 @@ check_committed_windows_lock <- function() {
   spec <- list(lock = lock, dependencyFile = input)
   writeBin(charToRaw("Package: sample\nImports: shiny\n"), input)
   digest <- runtime_fingerprint(spec)
-  stopifnot(file.copy("bundles/minimal/rproj.lock", lock))
+  writeLines(legacy_minimal_lock(), lock)
   cat(
     sprintf('\n[shinytauri]\ninput_sha256 = "%s"\n', digest),
     file = lock,
@@ -199,7 +199,7 @@ check_lock_pins_runtime <- function() {
   )
   # Exercise the lock writer without downloading metadata or packages in unit tests.
   # The fixture stands in for rig's output and is still checked by windows_target.
-  fixture <- readLines("bundles/minimal/rproj.lock")
+  fixture <- legacy_minimal_lock()
   digest <- paste(rep("a", 64L), collapse = "")
   subject <- new.env(parent = environment())
   sys.source("scripts/runtime-deps.R", envir = subject)
@@ -223,11 +223,30 @@ check_lock_pins_runtime <- function() {
     writeLines(gsub("/4.6/", "/4.5/", lines, fixed = TRUE), "rproj.lock")
     0L
   }
+  subject$pin_packages <- function(target, stage) {
+    stats::setNames(
+      rep(digest, length(target$urls)),
+      vapply(target$packages, function(p) p$package, "")
+    )
+  }
   subject$lock_windows(spec)
   recorded <- RcppTOML::parseTOML(spec$lock)$shinytauri
-  stopifnot(identical(recorded$runtime_sha256, digest))
+  stopifnot(
+    identical(recorded$runtime_sha256, digest),
+    length(recorded$package_sha256) == 30L,
+    identical(
+      unname(windows_target(spec$lock)$package_sha256),
+      rep(digest, 30L)
+    )
+  )
   verify_runtime_lock(spec)
   lines <- readLines(spec$lock)
+  subject$pin_packages <- function(...) stop("interrupted package transfer")
+  expect_bundle_error(
+    subject$lock_windows(spec),
+    "interrupted package transfer"
+  )
+  stopifnot(identical(readLines(spec$lock), lines))
   writeLines(lines[!startsWith(lines, "runtime_sha256 =")], spec$lock)
   expect_bundle_error(verify_runtime_lock(spec), "SHA-256")
   writeLines(lines, spec$lock)

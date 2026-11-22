@@ -14,6 +14,13 @@ expect_bundle_error <- function(expr, text) {
   )
 }
 
+# The shipped minimal lock appends pins to the original rig file. Recreate
+# the byte-equivalent legacy fixture for tests of older apps and solver output.
+legacy_minimal_lock <- function() {
+  lines <- readLines("bundles/minimal/rproj.lock")
+  lines[seq_len(match("[shinytauri]", lines) - 2L)]
+}
+
 check_bundle <- function(profile, included, excluded, quarto) {
   spec <- read_bundle(profile)
   target <- windows_target(spec$lock)
@@ -300,6 +307,34 @@ check_external_build <- function() {
   }
   writeLines(lines, profile)
   subject$run_tauri <- plain_run
+  expect_defaults <- TRUE
+  real_packages <- stage_packages
+  environment(real_packages) <- subject
+  subject$stage_packages <- real_packages
+  subject$archive_cache_dir <- function() file.path(root, "cache")
+  subject$download_zip <- function(url, file) {
+    for (part in file) {
+      writeLines("incomplete", part)
+    }
+  }
+  expect_bundle_error(
+    subject$build_windows(profile, output, engine),
+    "SHA-256 mismatch"
+  )
+  stopifnot(
+    identical(readLines(published), "new"),
+    !length(list.files(file.path(root, "cache"), pattern = "[.]zip$"))
+  )
+  subject$stage_packages <- function(...) NULL
+  dir.create(file.path(project, "www"))
+  writeLines(sub('"app.R"', '"app.R", "www"', lines, fixed = TRUE), profile)
+  subject$archive_cache_dir <- function() file.path(project, "www", "cache")
+  expect_bundle_error(
+    subject$build_windows(profile, output, engine),
+    "cache overlaps an app resource"
+  )
+  subject$archive_cache_dir <- function() file.path(root, "cache")
+  writeLines(lines, profile)
   # The project itself is a valid output directory. Protect a selected source
   # file if its name matches the actual installer produced by Tauri.
   subject$build_windows(profile, project, engine)
@@ -318,6 +353,7 @@ check_external_build <- function() {
     "overwrite"
   )
   stopifnot(identical(readLines(in_project), "source"))
+  expect_defaults <- FALSE
   writeLines(
     c(lines, sprintf('licenseFile = "%s"', basename(in_project))),
     profile
@@ -446,3 +482,4 @@ check_cli_entry <- function() {
 check_cli_entry()
 source("scripts/tests/test-runtime-deps.R")
 source("scripts/tests/test-portable-runtime.R")
+source("scripts/tests/test-archive-cache.R")

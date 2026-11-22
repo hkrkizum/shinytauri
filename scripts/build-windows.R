@@ -18,7 +18,120 @@ download_zip <- function(url, file) {
   }
 }
 
-unpack <- function(archive, dest, prefix) {
+archive_cache_dir <- function() {
+  root <- Sys.getenv("SHINYTAURI_CACHE_DIR")
+  if (!nzchar(root)) {
+    root <- tools::R_user_dir("shinytauri", "cache")
+  } else {
+    absolute <- if (.Platform$OS.type == "windows") {
+      grepl("^([A-Za-z]:/|//[^/]+/[^/]+)", chartr("\\", "/", root))
+    } else {
+      startsWith(root, "/")
+    }
+    if (!absolute) stop("SHINYTAURI_CACHE_DIR must be an absolute path: ", root)
+  }
+  file.path(root, "v1", "sha256")
+}
+
+lock_cache <- function(dir) {
+  if (
+    !dir.exists(dir) &&
+      !dir.create(dir, recursive = TRUE, mode = "0700") &&
+      !dir.exists(dir)
+  ) {
+    stop(
+      "Cannot create archive cache: ",
+      dir,
+      ". Set SHINYTAURI_CACHE_DIR to a writable directory."
+    )
+  }
+  # Caching is optional. A slow or stalled writer must not block an unrelated
+  # build indefinitely; a reader without the lock can verify private copies.
+  filelock::lock(file.path(dir, "archives.lock"), timeout = 5000L)
+}
+
+# All callers hold the cache lock. Publish complete, verified bytes on the
+# cache's own filesystem, even when the private build directory is on another.
+store_archives <- function(files, sums, dir) {
+  # tempfile translates its tmpdir to the native code page on Windows.
+  # Keep a Unicode cache path intact and generate only the temporary name.
+  part <- file.path(dir, basename(tempfile(".incoming-")))
+  on.exit(unlink(part))
+  for (i in seq_along(files)) {
+    object <- file.path(dir, paste0(sums[[i]], ".zip"))
+    if (file.exists(object) && isTRUE(tools::sha256sum(object) == sums[[i]])) {
+      next
+    }
+    if (
+      !file.copy(files[[i]], part, overwrite = TRUE) ||
+        !isTRUE(tools::sha256sum(part) == sums[[i]])
+    ) {
+      stop("Could not copy verified archive to cache: ", object)
+    }
+    if (!file.rename(part, object)) {
+      stop("Could not publish verified archive: ", object)
+    }
+  }
+}
+
+fetch_archives <- function(urls, files, pins = NULL) {
+  if (is.null(pins)) {
+    # A legacy URL alone does not establish the identity of bytes in a cache.
+    download_zip(urls, files)
+    return(invisible(NULL))
+  }
+  stopifnot(
+    length(urls) == length(files),
+    length(files) == length(pins),
+    all(vapply(pins, valid_sha256, logical(1)))
+  )
+  dir <- archive_cache_dir()
+  guard <- lock_cache(dir)
+  if (!is.null(guard)) {
+    on.exit(filelock::unlock(guard))
+  }
+  # Verify the private copies that will actually be unpacked.
+  hits <- vapply(
+    seq_along(files),
+    function(i) {
+      object <- file.path(dir, paste0(pins[[i]], ".zip"))
+      if (
+        !file.exists(object) || !file.copy(object, files[[i]], overwrite = TRUE)
+      ) {
+        return(FALSE)
+      }
+      if (isTRUE(tools::sha256sum(files[[i]]) == pins[[i]])) {
+        return(TRUE)
+      }
+      # An interrupted re-fetch must not leave this known-bad entry available.
+      if (!is.null(guard) && unlink(object) != 0L) {
+        stop("Could not remove damaged cached archive: ", object)
+      }
+      FALSE
+    },
+    logical(1)
+  )
+  if (all(hits)) {
+    return(invisible(NULL))
+  }
+  urls <- urls[!hits]
+  files <- files[!hits]
+  pins <- pins[!hits]
+  download_zip(urls, files)
+  sums <- tools::sha256sum(files)
+  mismatches <- which(is.na(sums) | sums != pins)
+  if (length(mismatches)) {
+    i <- mismatches[[1L]]
+    label <- if (is.null(names(urls))) basename(urls[[i]]) else names(urls)[[i]]
+    stop("SHA-256 mismatch for ", label)
+  }
+  if (!is.null(guard)) {
+    store_archives(files, pins, dir)
+  }
+  invisible(NULL)
+}
+
+check_archive_layout <- function(archive, prefix) {
   entries <- utils::unzip(archive, list = TRUE)$Name
   if (
     !length(entries) ||
@@ -27,6 +140,10 @@ unpack <- function(archive, dest, prefix) {
   ) {
     stop("Unexpected ZIP layout in ", archive)
   }
+}
+
+unpack <- function(archive, dest, prefix) {
+  check_archive_layout(archive, prefix)
   withCallingHandlers(
     utils::unzip(archive, exdir = dest),
     warning = function(w) stop(conditionMessage(w), call. = FALSE)
@@ -105,10 +222,7 @@ stage_runtime <- function(target, stage, payload) {
   runtime <- tools::file_path_sans_ext(basename(url))
   digest <- target$runtime_sha256 %||% portable_r_digest(version)
   archive <- file.path(stage, "R.zip")
-  download_zip(url, archive)
-  if (tools::sha256sum(archive) != digest) {
-    stop("SHA-256 mismatch for ", runtime)
-  }
+  fetch_archives(url, archive, digest)
   unpack(archive, payload, runtime)
   stopifnot(
     file.rename(file.path(payload, runtime), file.path(payload, "R")),
@@ -125,32 +239,67 @@ stage_quarto <- function(stage, payload) {
     version,
     version
   )
-  download_zip(url, archive)
-  if (tools::sha256sum(archive) != digest) {
-    stop("SHA-256 mismatch for Quarto ", version)
-  }
+  fetch_archives(url, archive, digest)
   dest <- file.path(payload, "quarto")
   stopifnot(dir.create(dest))
   unpack(archive, dest, c("bin", "share"))
   stopifnot(file.exists(file.path(dest, "bin/quarto.exe")))
 }
 
+check_package <- function(desc, package) {
+  fields <- read.dcf(desc, fields = c("Package", "Version"))
+  if (
+    nrow(fields) != 1L ||
+      !identical(unname(fields[1L, ]), c(package$package, package$version))
+  ) {
+    stop(
+      "Windows archive does not match locked package ",
+      package$package,
+      " ",
+      package$version
+    )
+  }
+}
+
+pin_packages <- function(target, stage) {
+  files <- file.path(stage, paste0(seq_along(target$urls), ".zip"))
+  # Establish new pins from the current HTTPS responses at lock time.
+  download_zip(target$urls, files)
+  for (i in seq_along(files)) {
+    pkg <- target$packages[[i]]
+    check_archive_layout(files[[i]], pkg$package)
+    check_package(unz(files[[i]], paste0(pkg$package, "/DESCRIPTION")), pkg)
+  }
+  sums <- unname(tools::sha256sum(files))
+  stopifnot(all(vapply(sums, valid_sha256, logical(1))))
+  dir <- archive_cache_dir()
+  guard <- lock_cache(dir)
+  if (!is.null(guard)) {
+    on.exit(filelock::unlock(guard))
+  }
+  if (!is.null(guard)) {
+    store_archives(files, sums, dir)
+  }
+  stats::setNames(sums, vapply(target$packages, function(p) p$package, ""))
+}
+
 stage_packages <- function(target, stage, payload) {
   packages <- target$packages
   archives <- file.path(stage, paste0(seq_along(packages), ".zip"))
-  download_zip(target$urls, archives)
+  names <- vapply(packages, function(pkg) pkg$package, "")
+  fetch_archives(
+    stats::setNames(target$urls, names),
+    archives,
+    target$package_sha256
+  )
   library_dir <- file.path(payload, "library")
   stopifnot(dir.create(library_dir))
   for (i in seq_along(packages)) {
     package <- packages[[i]]
     unpack(archives[[i]], library_dir, package$package)
-    desc <- read.dcf(
+    check_package(
       file.path(library_dir, package$package, "DESCRIPTION"),
-      fields = c("Package", "Version")
-    )
-    stopifnot(
-      desc[1L, "Package"] == package$package,
-      desc[1L, "Version"] == package$version
+      package
     )
   }
   message(
@@ -320,6 +469,7 @@ read_bundle <- function(path, for_lock = FALSE) {
 windows_target <- function(path, r_version = NULL) {
   lock <- RcppTOML::parseTOML(path)
   targets <- Filter(function(t) identical(t$platform, platform), lock$targets)
+  windows_count <- length(targets)
   if (!is.null(r_version)) {
     validate_r_version(r_version)
     targets <- Filter(function(t) identical(t$r_version, r_version), targets)
@@ -368,6 +518,25 @@ windows_target <- function(path, r_version = NULL) {
   target$runtime_sha256 <- pin
   target$packages <- Filter(function(p) "main" %in% p$groups, target$packages)
   packages <- vapply(target$packages, function(p) p$package, character(1))
+  pins <- lock$shinytauri[["package_sha256"]]
+  format <- lock$shinytauri[["archive_format"]]
+  if (!is.null(format) || !is.null(pins)) {
+    if (
+      windows_count != 1L ||
+        !identical(format, 1L) ||
+        !is.list(pins) ||
+        anyDuplicated(packages) ||
+        !setequal(names(pins), packages) ||
+        !all(vapply(pins, valid_sha256, logical(1)))
+    ) {
+      stop("Invalid or incomplete Windows package SHA-256 table in ", path)
+    }
+    target$package_sha256 <- unname(tolower(vapply(
+      pins[packages],
+      identity,
+      ""
+    )))
+  }
   if (!"shiny" %in% packages) {
     stop("Missing Shiny runtime dependency in ", path)
   }
@@ -618,6 +787,21 @@ build_windows <- function(profile, output = NULL, engine = getwd()) {
   }
   if (!is.null(output)) {
     output <- absolute_path(output)
+  }
+
+  # Never copy cache objects into the app when a cache override lies inside
+  # a recursively selected resource (including after an earlier lock command).
+  cache <- absolute_path(archive_cache_dir())
+  if (
+    any(vapply(
+      file.path(spec$app, spec$files),
+      function(source) within_path(cache, source),
+      FALSE
+    ))
+  ) {
+    stop(
+      "The archive cache overlaps an app resource. Set SHINYTAURI_CACHE_DIR outside files."
+    )
   }
 
   tauri <- file.path(engine, "src-tauri")
