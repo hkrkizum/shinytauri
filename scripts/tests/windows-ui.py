@@ -123,8 +123,11 @@ def check(kind, exe, evidence):
             children = psutil.Process(app.pid).children(recursive=True)
             runtimes = [p for p in children if p.name().lower() in {"r.exe", "rterm.exe", "rscript.exe"}]
             assert len(runtimes) >= (2 if kind == "rhino" else 1), runtimes
+            bundled_r = (exe.parent / "offline" / "R").resolve(strict=True)
             for proc in runtimes:
-                assert Path(proc.exe()).is_relative_to(exe.parent / "offline" / "R"), proc.exe()
+                # Windows may report a child's executable using 8.3 short names.
+                runtime_exe = Path(proc.exe()).resolve(strict=True)
+                assert any(parent.samefile(bundled_r) for parent in runtime_exe.parents), runtime_exe
             close_main_window(app)
             _, alive = psutil.wait_procs(runtimes, timeout=10)
             assert not alive, f"R processes survived closing {kind}: {alive}"
