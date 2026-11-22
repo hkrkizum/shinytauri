@@ -127,16 +127,24 @@ pub(crate) fn resources(app: &Path) -> Result<Resources> {
     Ok(resources)
 }
 
-fn validate_lock(path: &Path, version: Option<&str>) -> Result<()> {
+pub(crate) fn read_lock(path: &Path) -> Result<Table> {
+    let text = fs::read_to_string(path).map_err(|err| format!("{}: {err}", path.display()))?;
+    text.parse().map_err(|err: toml::de::Error| {
+        format!("Invalid Windows lock {}: {}", path.display(), err.message()).into()
+    })
+}
+
+pub(crate) fn windows_target<'a>(
+    lock: &'a Table,
+    path: &Path,
+    version: Option<&str>,
+) -> Result<&'a Value> {
     let message = || {
         format!(
             "{} needs a Windows x64 Shiny runtime lock. Declare shiny in [dependencies], set a Windows rig target, then run rig proj lock.",
             path.display()
         )
     };
-    let lock: Table = fs::read_to_string(path)?
-        .parse()
-        .map_err(|err| format!("{} ({err})", message()))?;
     let mut targets = lock
         .get("targets")
         .and_then(Value::as_array)
@@ -152,19 +160,27 @@ fn validate_lock(path: &Path, version: Option<&str>) -> Result<()> {
         None => message(),
     })?;
     if targets.next().is_some() {
-        return Err(format!("{} has multiple matching Windows x64 targets. Select a unique target with --r-version.", path.display()).into());
+        return Err(format!("{} has multiple matching Windows x64 targets. Set rVersion in the bundle config (or use --r-version with init).", path.display()).into());
     }
-    let packages = target.get("packages").and_then(Value::as_array);
-    if packages.into_iter().flatten().any(|package| {
-        package.get("package").and_then(Value::as_str) == Some("shiny")
-            && package
-                .get("groups")
-                .and_then(Value::as_array)
-                .is_some_and(|groups| groups.iter().any(|g| g.as_str() == Some("main")))
-    }) {
-        return Ok(());
+    if main_packages(target)
+        .any(|package| package.get("package").and_then(Value::as_str) == Some("shiny"))
+    {
+        return Ok(target);
     }
     Err(message().into())
+}
+
+pub(crate) fn main_packages(target: &Value) -> impl Iterator<Item = &Value> {
+    target
+        .get("packages")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|p| {
+            p.get("groups")
+                .and_then(Value::as_array)
+                .is_some_and(|g| g.iter().any(|v| v.as_str() == Some("main")))
+        })
 }
 
 fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
@@ -214,7 +230,7 @@ pub(crate) fn initialize(
     let has_lock = entry(&root_lock)?.is_some();
     let has_manifest = entry(&app.join("rproj.toml"))?.is_some();
     if has_lock {
-        validate_lock(&root_lock, r_version.as_deref())?;
+        windows_target(&read_lock(&root_lock)?, &root_lock, r_version.as_deref())?;
     }
     if (has_lock || has_manifest) && !packages.is_empty() {
         return Err("The app already has rig metadata. Declare additional packages there.".into());

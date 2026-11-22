@@ -21,13 +21,7 @@ pub(crate) enum Action {
     Lock,
 }
 
-pub(crate) fn execute(app: Option<PathBuf>, config: Option<PathBuf>, action: Action) -> Result<()> {
-    if !cfg!(all(
-        target_arch = "x86_64",
-        any(target_os = "linux", windows)
-    )) {
-        return Err("Building currently requires x86_64 Linux or x64 Windows.".into());
-    }
+pub(crate) fn config_path(app: Option<PathBuf>, config: Option<PathBuf>) -> Result<PathBuf> {
     let config = config.unwrap_or_else(|| {
         app.unwrap_or_else(|| PathBuf::from("."))
             .join("shinytauri.toml")
@@ -40,6 +34,17 @@ pub(crate) fn execute(app: Option<PathBuf>, config: Option<PathBuf>, action: Act
         )
         .into());
     }
+    Ok(config)
+}
+
+pub(crate) fn execute(app: Option<PathBuf>, config: Option<PathBuf>, action: Action) -> Result<()> {
+    if !cfg!(all(
+        target_arch = "x86_64",
+        any(target_os = "linux", windows)
+    )) {
+        return Err("Building currently requires x86_64 Linux or x64 Windows.".into());
+    }
+    let config = config_path(app, config)?;
     let args = match action {
         Action::Build(out) => {
             let out = path::absolute(out.unwrap_or_else(|| config.parent().unwrap().join("dist")))?;
