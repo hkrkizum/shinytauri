@@ -127,7 +127,7 @@ def check(kind, exe, evidence):
             for proc in runtimes:
                 # Windows may report a child's executable using 8.3 short names.
                 runtime_exe = Path(proc.exe()).resolve(strict=True)
-                assert runtime_exe.is_relative_to(bundled_r), runtime_exe
+                assert any(parent.samefile(bundled_r) for parent in runtime_exe.parents), runtime_exe
             close_main_window(app)
             _, alive = psutil.wait_procs(runtimes, timeout=10)
             assert not alive, f"R processes survived closing {kind}: {alive}"
