@@ -340,6 +340,7 @@ sdk_notices <- function(directory) {
 }
 
 source_notices <- list(
+  "tree-sitter-0.27.2" = list("src/portable/endian.h" = 1:5),
   "vswhom-sys-0.1.3" = list("ext/vswhom.cpp" = 1:8),
   "tao-0.37.3" = list("src/keyboard.rs" = 1:74),
   "find-msvc-tools-0.1.15" = list("src/com.rs" = 1:6, "src/winapi.rs" = 1:6),
@@ -462,7 +463,13 @@ generate <- function(check) {
     stop("The two Cargo locks disagree on a dependency checksum")
   }
   components <- lapply(union, notice_files)
-  cli_text <- render(cli, components, "CLI (Linux x64 and Windows x64)")
+  case_table <- readLines("scripts/windows-name-case.txt", encoding = "UTF-8")
+  case_header <- sub("^# ?", "", case_table[startsWith(case_table, "#")])
+  cli_text <- paste(
+    render(cli, components, "CLI (Linux x64 and Windows x64)"),
+    paste(case_header, collapse = "\n"),
+    sep = "\n\n"
+  )
   host_text <- paste(
     "shinytauri Windows host license",
     read_text("LICENSE"),

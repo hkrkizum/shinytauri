@@ -359,7 +359,7 @@ dependencies = [
 
 [[package]]
 name = "shinytauri-cli"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "clap",
  "find-msvc-tools",
