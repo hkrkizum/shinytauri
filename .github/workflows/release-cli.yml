@@ -3,6 +3,12 @@ name: Release CLI
 on:
   push:
     tags: ['cli-v*']
+  pull_request:
+    paths:
+      - '.github/workflows/release-cli.yml'
+      - 'cli/Cargo.toml'
+      - 'cli/Cargo.lock'
+      - 'rust-toolchain.toml'
 
 permissions:
   contents: read
@@ -29,6 +35,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Test the CLI
         run: cargo test --manifest-path cli/Cargo.toml --locked
+      - name: Read the preview archive version
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -o pipefail
+          version=$(cargo metadata --manifest-path cli/Cargo.toml --locked --no-deps --format-version 1 |
+            jq -er '.packages[] | select(.name == "shinytauri-cli") | .version')
+          echo "RELEASE_TAG=cli-v$version" >> "$GITHUB_ENV"
       - name: Package with dist
         shell: bash
         env:
@@ -80,9 +94,11 @@ jobs:
           if-no-files-found: error
 
   windows-smoke:
+    if: github.event_name == 'push'
     uses: ./.github/workflows/cli-windows-smoke.yml
 
   publish:
+    if: github.event_name == 'push'
     needs: [archive, windows-smoke]
     runs-on: ubuntu-22.04
     permissions:
