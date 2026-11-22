@@ -100,6 +100,7 @@ description = "Test packaging with the locked build R environment"
 run = [
   "rig proj sync --locked",
   "rig run --rscript scripts/tests/test-bundle.R",
+  "rig run --rscript scripts/tests/test-notices.R",
 ]
 
 [tasks."test:tauri"]

@@ -193,6 +193,8 @@ check_external_build <- function() {
   stopifnot(
     dir.create(file.path(engine, "src-tauri"), recursive = TRUE),
     dir.create(file.path(engine, "scripts")),
+    dir.create(file.path(engine, "notices")),
+    file.copy("scripts/distribution-sources.R", file.path(engine, "scripts")),
     dir.create(project),
     file.copy("src-tauri/tauri.conf.json", file.path(engine, "src-tauri")),
     file.copy("LICENSE", engine),
@@ -201,6 +203,9 @@ check_external_build <- function() {
     file.copy("examples/minimal/app.R", project),
     file.copy("bundles/minimal/rproj.lock", project)
   )
+  for (name in c("host.txt", "rust-stdlib.html")) {
+    writeLines(name, file.path(engine, "notices", name))
+  }
   lines <- c(
     'app = "."',
     'files = ["app.R"]',
@@ -216,6 +221,7 @@ check_external_build <- function() {
   subject$stage_runtime <- function(...) NULL
   subject$stage_packages <- function(...) NULL
   expect_defaults <- TRUE
+  source_sha <- NULL
   subject$run_tauri <- function(engine, config, triple, target_dir) {
     contents <- jsonlite::read_json(config)
     if (expect_defaults) {
@@ -235,6 +241,32 @@ check_external_build <- function() {
       win$height == 600L
     )
     payload <- file.path(engine, "src-tauri", names(contents$bundle$resources))
+    manifest <- jsonlite::read_json(file.path(
+      payload,
+      "notices/components.json"
+    ))
+    stopifnot(
+      "sourceBundle" %in% names(manifest),
+      identical(manifest$schemaVersion, 1L),
+      identical(manifest$sourceBundle$sha256, source_sha),
+      manifest$r$version == "4.6.2",
+      is.null(manifest$quarto),
+      identical(
+        Filter(function(p) p$name == "shiny", manifest$packages)[[1]]$version,
+        "1.14.0"
+      ),
+      identical(readLines(file.path(payload, "notices/host.txt")), "host.txt"),
+      identical(
+        readLines(file.path(payload, "notices/rust-stdlib.html")),
+        "rust-stdlib.html"
+      )
+    )
+    if (!is.null(source_sha)) {
+      stopifnot(
+        manifest$sourceBundle$file ==
+          paste0("shinytauri-sources-", source_sha, ".tar.gz")
+      )
+    }
     stopifnot(
       file.exists(file.path(payload, "app/app.R")),
       file.exists(file.path(payload, "serve-bundled.R")),
@@ -253,6 +285,36 @@ check_external_build <- function() {
     identical(list.files(output), basename(published)),
     !dir.exists(file.path(project, ".rvenv"))
   )
+  materials <- file.path(root, "corresponding-source.tar.gz")
+  utils::tar(
+    materials,
+    file.path(basename(project), "shinytauri.toml"),
+    compression = "gzip",
+    tar = "internal"
+  )
+  source_sha <- unname(tools::sha256sum(materials))
+  writeLines(
+    c(lines, 'sourceBundle = "../corresponding-source.tar.gz"'),
+    profile
+  )
+  subject$build_windows(profile, output, engine)
+  expected_sidecar <- file.path(
+    output,
+    paste0("shinytauri-sources-", source_sha, ".tar.gz")
+  )
+  stopifnot(
+    file.exists(expected_sidecar),
+    identical(unname(tools::sha256sum(expected_sidecar)), source_sha)
+  )
+  # A damaged pre-existing content-addressed file must not replace the old installer.
+  writeLines("damaged source file", expected_sidecar)
+  writeLines("old installer", published)
+  expect_bundle_error(
+    subject$build_windows(profile, output, engine),
+    "existing"
+  )
+  stopifnot(identical(readLines(published), "old installer"))
+  source_sha <- NULL
   # Branding belongs to the bundle config and can sit outside the Shiny app.
   branding <- file.path(root, "配布 素材")
   stopifnot(dir.create(branding))
@@ -483,3 +545,4 @@ check_cli_entry()
 source("scripts/tests/test-runtime-deps.R")
 source("scripts/tests/test-portable-runtime.R")
 source("scripts/tests/test-archive-cache.R")
+source("scripts/tests/test-distribution-sources.R")

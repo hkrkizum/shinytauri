@@ -6,6 +6,8 @@ mod browser;
 mod desktop;
 #[cfg(any(windows, test))]
 mod logs;
+#[cfg(any(windows, test))]
+mod notices;
 mod package;
 #[cfg(windows)]
 mod processes;

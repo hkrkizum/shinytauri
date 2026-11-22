@@ -1,6 +1,12 @@
 use anyhow::{Context, Result, ensure};
 use clap::ValueEnum;
-use std::{env::consts::EXE_SUFFIX, ffi::OsStr, fs, path::Path, process::Command};
+use std::{
+    env::consts::EXE_SUFFIX,
+    ffi::OsStr,
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 #[derive(Clone, Copy, ValueEnum)]
 pub(crate) enum Fixture {
@@ -44,22 +50,24 @@ fn edit_profile(app: &Path, file: &str, fields: &[(&str, toml::Value)]) -> Resul
     Ok(())
 }
 
-fn collect_setup(app: &Path, destination: &Path) -> Result<()> {
-    let mut setups = Vec::new();
+fn artifact(app: &Path, suffix: &str) -> Result<PathBuf> {
+    let mut matches = Vec::new();
     for entry in fs::read_dir(app.join("dist"))? {
         let entry = entry?;
-        if entry.file_type()?.is_file()
-            && entry.file_name().to_string_lossy().ends_with("-setup.exe")
-        {
-            setups.push(entry.path());
+        if entry.file_type()?.is_file() && entry.file_name().to_string_lossy().ends_with(suffix) {
+            matches.push(entry.path());
         }
     }
     ensure!(
-        setups.len() == 1,
-        "Expected one installer in {}, found {setups:?}",
+        matches.len() == 1,
+        "Expected one {suffix} in {}, found {matches:?}",
         app.display()
     );
-    fs::copy(&setups[0], destination)?;
+    Ok(matches.pop().unwrap())
+}
+
+fn collect_setup(app: &Path, destination: &Path) -> Result<()> {
+    fs::copy(artifact(app, "-setup.exe")?, destination)?;
     Ok(())
 }
 
@@ -116,6 +124,7 @@ pub(crate) fn run(fixture: Fixture, cli: &Path, repo: &Path, temp: &Path) -> Res
         Fixture::Rhino => {
             let app = caller.join("shinytauri-smoke-rhino");
             copy_tree(&repo.join("src-shiny"), &app)?;
+            copy_tree(&fixtures.join("source-bundle"), &caller.join("配布資料"))?;
             copy_tree(&fixtures.join("branding"), &app.join("配布 素材"))?;
             invoke(
                 cli,
@@ -134,6 +143,7 @@ pub(crate) fn run(fixture: Fixture, cli: &Path, repo: &Path, temp: &Path) -> Res
                     ("version", "1.2.3".into()),
                     ("title", "Rhino Smoke".into()),
                     ("quarto", true.into()),
+                    ("sourceBundle", "../配布資料".into()),
                     ("publisher", "販売 株式会社".into()),
                     ("icon", "配布 素材/製品.ico".into()),
                     ("licenseFile", "配布 素材/利用規約.txt".into()),
@@ -150,7 +160,11 @@ pub(crate) fn run(fixture: Fixture, cli: &Path, repo: &Path, temp: &Path) -> Res
                     app.join("dist").as_os_str(),
                 ],
             )?;
-            collect_setup(&app, &temp.join("rhino-setup.exe"))
+            collect_setup(&app, &temp.join("rhino-setup.exe"))?;
+            // Preserve the content-addressed basename referenced by the installed manifest.
+            let sidecar = artifact(&app, ".tar.gz")?;
+            fs::copy(&sidecar, temp.join(sidecar.file_name().unwrap()))?;
+            Ok(())
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::{branding, desktop, upgrade};
+use crate::{branding, desktop, notices, upgrade};
 use anyhow::{Context, Result, ensure};
 use std::{
     env, fs,
@@ -156,7 +156,15 @@ fn install(
     let status = Command::new(&setup).arg("/S").status()?;
     ensure!(status.success(), "{} exited with {status}", setup.display());
     let app = registration(kind)?;
-    if kind == "rhino" {
+    let rhino = kind == "rhino";
+    notices::check(
+        &app.directory.join("offline"),
+        &runner_path("GITHUB_WORKSPACE")?.join("notices"),
+        installers,
+        if rhino { "4.6.2" } else { "4.5.3" },
+        rhino,
+    )?;
+    if rhino {
         ensure!(app.version == "1.2.3", "Wrong Rhino version: {app:?}");
         ensure!(
             app.directory.join("offline/app/app/static").is_dir(),
