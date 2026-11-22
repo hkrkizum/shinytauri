@@ -1,0 +1,35 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directories:
+      - /cli
+      - /src-tauri
+      - /scripts/tests/windows-acceptance
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      shared-crates:
+        patterns: ["*"]
+        group-by: dependency-name
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: nix
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      flake-inputs:
+        patterns: ["*"]
+
+  - package-ecosystem: rust-toolchain
+    directory: /
+    schedule:
+      interval: monthly
