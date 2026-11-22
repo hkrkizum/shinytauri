@@ -14,6 +14,7 @@ on:
       - 'examples/**'
       - 'scripts/**'
       - 'rproj.*'
+      - 'rust-toolchain.toml'
       - 'flake.*'
       - 'nix/**'
       - '.github/workflows/cli-windows-smoke.yml'
@@ -34,10 +35,10 @@ jobs:
           - app: rhino
             runner: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Nix for the Windows cross-build
         if: runner.os == 'Linux'
-        uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+        uses: cachix/install-nix-action@bb0495a1086c46893eee56f32fd192dfe4a15bb9 # v32.0.0
       - name: Install Windows build tools
         if: runner.os == 'Windows'
         shell: pwsh
@@ -57,6 +58,15 @@ jobs:
       - name: Build the Linux CLI in the Windows cross-build shell
         if: runner.os == 'Linux'
         run: nix develop --no-update-lock-file .#windows -c cargo build --locked --release --manifest-path cli/Cargo.toml
+      - name: Check that distribution notices match the locked Cargo dependencies
+        if: runner.os == 'Linux'
+        env:
+          RIG_MODE: user
+        run: |
+          nix develop --no-update-lock-file .#windows -c bash -ec '
+            rig proj sync --locked
+            rig run --rscript scripts/generate-notices.R --check
+          '
       - name: Build the Windows CLI
         if: runner.os == 'Windows'
         run: cargo build --locked --release --manifest-path cli/Cargo.toml
@@ -74,7 +84,7 @@ jobs:
           $suffix = if ($IsWindows) { '.exe' } else { '' }
           & "./scripts/tests/windows-acceptance/target/debug/shinytauri-acceptance$suffix" package `
             $env:FIXTURE "cli/target/release/shinytauri$suffix" $env:GITHUB_WORKSPACE $env:RUNNER_TEMP
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-installer-${{ matrix.app }}
           path: |
@@ -89,12 +99,12 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             scripts/tests
             notices
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: windows-installer-*
           path: ${{ runner.temp }}/installers
@@ -118,7 +128,7 @@ jobs:
           }
       - name: Install both products, exercise their windows, and close them
         run: ./scripts/tests/windows-acceptance/target/debug/shinytauri-acceptance.exe installed-apps
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: windows-acceptance-evidence
