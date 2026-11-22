@@ -224,6 +224,10 @@ check_external_build <- function() {
   sys.source("scripts/build-windows.R", subject)
   subject$stage_runtime <- function(...) NULL
   subject$stage_packages <- function(...) NULL
+  checkout <- normalizePath(".")
+  subject$run_bundle_cli <- function(engine, args, capture = FALSE) {
+    run_bundle_cli(checkout, args, capture)
+  }
   expect_defaults <- TRUE
   source_sha <- NULL
   subject$run_tauri <- function(engine, config, triple, target_dir) {
@@ -282,6 +286,21 @@ check_external_build <- function() {
   }
   old <- setwd(root)
   on.exit(setwd(old), add = TRUE, after = FALSE)
+  # Existing rig locks use the same post-stage source check as managed and
+  # bundled locks. Exercise the repository CLI from this unrelated directory.
+  app_entry <- file.path(project, "app.R")
+  original <- readLines(app_entry)
+  writeLines('source("omitted.R")', app_entry)
+  writeLines(
+    'stop("the inspector must never evaluate an app")',
+    file.path(project, "omitted.R")
+  )
+  expect_bundle_error(
+    subject$build_windows(profile, output, engine),
+    "CLI check failed"
+  )
+  stopifnot(!file.exists(file.path(output, "Sales_1.2.3_x64-setup.exe")))
+  writeLines(original, app_entry)
   subject$build_windows(profile, output, engine)
   published <- file.path(output, "Sales_1.2.3_x64-setup.exe")
   stopifnot(

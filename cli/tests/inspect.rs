@@ -363,3 +363,161 @@ fn checks_all_selected_windows_paths_and_ancestors() {
     );
     assert!(result.status.success(), "{result:?}");
 }
+
+#[test]
+fn missing_literal_sources_report_the_call_site_and_include_remedy_offline() {
+    let fixture = tempdir().unwrap();
+    let root = fixture.path();
+    fs::write(
+        root.join("app.R"),
+        "base::source(file = 'helpers.R', local = TRUE)\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("helpers.R"),
+        "stop('app code must never be evaluated')\n",
+    )
+    .unwrap();
+    fs::write(root.join("rproj.lock"), LOCK).unwrap();
+    fs::write(
+        root.join("shinytauri.toml"),
+        "app='.'\nlock='rproj.lock'\nfiles=['app.R']",
+    )
+    .unwrap();
+    let result = inspect(root, &[]);
+    assert!(!result.status.success(), "{result:?}");
+    let error = String::from_utf8(result.stderr).unwrap();
+    for expected in ["app.R:1", "helpers.R", "files"] {
+        assert!(error.contains(expected), "{error}");
+    }
+    fs::write(
+        root.join("shinytauri.toml"),
+        "app='.'\nlock='rproj.lock'\nfiles=['app.R', 'helpers.R']",
+    )
+    .unwrap();
+    assert!(inspect(root, &[]).status.success());
+}
+
+#[test]
+fn child_working_directory_and_source_bindings_affect_the_calling_script() {
+    for change in [
+        "setwd('data')",
+        "source <- function(...) NULL",
+        "if (ready) source <- function(...) NULL",
+    ] {
+        let fixture = tempdir().unwrap();
+        let root = fixture.path();
+        fs::write(root.join("app.R"), "source('setup.R')\nsource('another.R')").unwrap();
+        fs::write(root.join("setup.R"), change).unwrap();
+        fs::write(root.join("another.R"), "").unwrap();
+        fs::write(root.join("rproj.lock"), LOCK).unwrap();
+        fs::write(
+            root.join("shinytauri.toml"),
+            "app='.'\nlock='rproj.lock'\nfiles=['app.R','setup.R']",
+        )
+        .unwrap();
+        let result = inspect(root, &[]);
+        assert!(result.status.success(), "{result:?}");
+    }
+}
+
+#[test]
+fn a_dynamic_encoding_does_not_hide_a_known_source_path() {
+    let fixture = tempdir().unwrap();
+    let root = fixture.path();
+    fs::write(
+        root.join("app.R"),
+        "source('helper.R', encoding = preferred)",
+    )
+    .unwrap();
+    fs::write(root.join("helper.R"), "").unwrap();
+    fs::write(root.join("rproj.lock"), LOCK).unwrap();
+    fs::write(
+        root.join("shinytauri.toml"),
+        "app='.'\nlock='rproj.lock'\nfiles=['app.R']",
+    )
+    .unwrap();
+    let result = inspect(root, &[]);
+    assert!(
+        !result.status.success() && String::from_utf8_lossy(&result.stderr).contains("helper.R"),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn follows_chdir_for_each_call_context_but_ignores_deferred_code() {
+    let root = tempdir().unwrap();
+    let app = root.path();
+    fs::create_dir(app.join("lib")).unwrap();
+    fs::write(
+        app.join("app.R"),
+        r#"# source("decoy.R")
+quoted <- r"(source('decoy.R'))"
+quote(source("decoy.R"))
+if (FALSE) source("decoy.R")
+on_event <- function() source("decoy.R")
+source(ch = FALSE, "lib/load.R")
+{ base :: source(fil = "lib/load.R", chdir = TRUE) }
+"#,
+    )
+    .unwrap();
+    fs::write(app.join("lib/load.R"), "source('./child.R')").unwrap();
+    for p in ["child.R", "lib/child.R", "decoy.R"] {
+        fs::write(app.join(p), "").unwrap();
+    }
+    fs::write(
+        app.join("shinytauri.toml"),
+        "app='.'\nlock='rproj.lock'\nfiles=['app.R','lib/load.R','child.R']",
+    )
+    .unwrap();
+    fs::write(app.join("rproj.lock"), LOCK).unwrap();
+    let result = inspect(app, &[]);
+    let error = String::from_utf8(result.stderr).unwrap();
+    assert!(!result.status.success(), "{error}");
+    assert!(
+        error.contains("lib/load.R:1") && error.contains("lib/child.R") && !error.contains("decoy"),
+        "{error}"
+    );
+}
+
+#[test]
+fn checks_shiny_autoload_and_split_entry_points_and_warns_on_absent_originals() {
+    let root = tempdir().unwrap();
+    let app = root.path();
+    fs::create_dir(app.join("R")).unwrap();
+    fs::write(app.join("app.R"), "source('never.R')").unwrap();
+    fs::write(app.join("server.R"), "").unwrap();
+    fs::write(app.join("global.r"), "source('global-helper.R')").unwrap();
+    fs::write(app.join("ui.R"), "source('created.R')").unwrap();
+    fs::write(app.join("R/a.R"), "source('auto-helper.R')").unwrap();
+    for p in ["global-helper.R", "auto-helper.R", "never.R"] {
+        fs::write(app.join(p), "").unwrap();
+    }
+    fs::write(app.join("rproj.lock"), LOCK).unwrap();
+    fs::write(
+        app.join("shinytauri.toml"),
+        "app='.'\nlock='rproj.lock'\nfiles=['server.R','ui.R','global.r','app.R','R']",
+    )
+    .unwrap();
+    let result = inspect(app, &[]);
+    let error = String::from_utf8(result.stderr).unwrap();
+    assert!(!result.status.success());
+    for expected in [
+        "global.r:1",
+        "global-helper.R",
+        "R/a.R:1",
+        "auto-helper.R",
+        "Warning",
+        "created.R",
+    ] {
+        assert!(error.contains(expected), "{error}");
+    }
+    assert!(!error.contains("never.R"));
+    fs::write(app.join("R/_disable_autoload.R"), "").unwrap();
+    fs::write(app.join("global.r"), "").unwrap();
+    let result = inspect(app, &[]);
+    assert!(
+        result.status.success() && String::from_utf8_lossy(&result.stderr).contains("created.R"),
+        "{result:?}"
+    );
+}

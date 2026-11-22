@@ -757,6 +757,50 @@ stage_app <- function(
   }
 }
 
+# Reuse the installed CLI for checks shared with inspect. Direct builds from a
+# checkout run the same locked CLI through Cargo.
+run_bundle_cli <- function(engine, args, capture = FALSE) {
+  executable <- Sys.getenv("SHINYTAURI_CLI_EXECUTABLE")
+  if (!nzchar(executable)) {
+    executable <- "cargo"
+    args <- c(
+      "run",
+      "--quiet",
+      "--locked",
+      "--manifest-path",
+      file.path(engine, "cli", "Cargo.toml"),
+      "--",
+      args
+    )
+  }
+  if (!capture) {
+    if (system2(executable, shQuote(args)) != 0L) {
+      stop("shinytauri CLI check failed")
+    }
+    return(invisible(NULL))
+  }
+  stderr <- tempfile()
+  on.exit(unlink(stderr))
+  result <- suppressWarnings(system2(
+    executable,
+    shQuote(args),
+    stdout = TRUE,
+    stderr = stderr
+  ))
+  errors <- readLines(stderr, warn = FALSE)
+  if (!is.null(attr(result, "status"))) {
+    stop("shinytauri CLI check failed: ", paste(errors, collapse = "\n"))
+  }
+  if (length(errors)) {
+    message(paste(errors, collapse = "\n"))
+  }
+  result
+}
+
+check_staged_sources <- function(stage, app, engine) {
+  run_bundle_cli(engine, c("check-staged-sources", stage, app))
+}
+
 run_tauri <- function(engine, config, triple, target_dir) {
   old <- setwd(file.path(engine, "src-tauri"))
   on.exit(setwd(old))
@@ -892,6 +936,7 @@ build_windows <- function(profile, output = NULL, engine = getwd()) {
     output,
     file.path(engine, "scripts/windows-name-case.txt")
   )
+  check_staged_sources(file.path(payload, "app"), spec$app, engine)
   if (isTRUE(spec$checkMinimal)) {
     check_minimal_imports(file.path(payload, "app"), target)
   }

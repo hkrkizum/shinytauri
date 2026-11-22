@@ -2,6 +2,7 @@ mod build;
 mod doctor;
 mod init;
 mod inspect;
+mod sources;
 mod template;
 mod windows_names;
 
@@ -57,6 +58,8 @@ enum Commands {
         #[arg(long)]
         config: Option<PathBuf>,
     },
+    #[command(hide = true)]
+    CheckStagedSources { stage: PathBuf, app: PathBuf },
     /// Build the Windows installer from an app directory or a bundle TOML.
     Build {
         /// Directory containing shinytauri.toml (defaults to the current directory).
@@ -89,6 +92,7 @@ fn parse_r_version(value: &str) -> std::result::Result<String, String> {
 fn main() -> ExitCode {
     let result = match Cli::parse().command {
         Commands::Doctor => doctor::run(),
+        Commands::CheckStagedSources { stage, app } => inspect::staged_sources(&stage, &app),
         Commands::Init {
             app,
             id,
