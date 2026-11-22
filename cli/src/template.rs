@@ -22,6 +22,8 @@ const ENGINE_FILES: &[(&str, &[u8])] = engine_files![
     "scripts/runtime-deps.R",
     "scripts/serve-bundled.R",
     "ui/index.html",
+    "ui/startup.css",
+    "ui/startup.js",
     "src-tauri/build.rs",
     "src-tauri/Cargo.toml",
     "src-tauri/Cargo.lock",
@@ -31,6 +33,8 @@ const ENGINE_FILES: &[(&str, &[u8])] = engine_files![
     "src-tauri/src/main.rs",
     "src-tauri/src/offline.rs",
     "src-tauri/src/quarto.rs",
+    "src-tauri/src/readiness.rs",
+    "src-tauri/src/startup.rs",
     "src-tauri/icons/32x32.png",
     "src-tauri/icons/128x128.png",
     "src-tauri/icons/128x128@2x.png",
@@ -79,7 +83,15 @@ mod tests {
             String::from_utf8_lossy(&output.stderr)
         );
         assert!(engine.path().join("scripts/build-windows.R").is_file());
-        assert!(engine.path().join("ui/index.html").is_file());
+        for asset in [
+            "ui/index.html",
+            "ui/startup.css",
+            "ui/startup.js",
+            "src-tauri/src/startup.rs",
+            "src-tauri/src/readiness.rs",
+        ] {
+            assert!(engine.path().join(asset).is_file(), "missing {asset}");
+        }
         assert!(engine.path().join("rproj.lock").is_file());
         assert!(!engine.path().join("src-shiny").exists());
     }
