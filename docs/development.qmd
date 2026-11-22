@@ -92,6 +92,14 @@ nix develop .#docs -c quarto preview docs
 
 文体や表記を確認するときは `nix develop .#docs -c mise run docs:lint` で README とマニュアルを検査し、指摘された文を前後の文と照らして推敲する。生成先は `docs/_site/` である。`preview` が表示した URL を開き、ページ移動とコード例を確認する。プルリクエストでは GitHub Actions が HTML の生成を検証する。`main` への取り込み後、Actions が [GitHub Pages](https://hkrkizum.github.io/shinytauri/) に公開する。初めて公開するリポジトリでは Settings の Pages で公開元に GitHub Actions を選ぶ。
 
+マニュアルの配色は `docs/_brand.yaml` で指定する。青 `#00468B` を主色とし、赤 `#ED0000` をアクセントに使う。[ggsci の Lancet パレット](https://nanx.me/ggsci/reference/pal_lancet.html)
+
+六角形のロゴを編集するときは `scripts/generate-logo.R` を変更する。リポジトリのルートで次のコマンドを実行すると、ggplot2 が `docs/images/shinytauri.svg` を生成する。
+
+```sh
+nix develop .#branding -c Rscript --vanilla scripts/generate-logo.R
+```
+
 ## CLI をリリースする
 
 CLI の配布には [dist](https://opensource.axo.dev/cargo-dist/) を使う。リポジトリのルートで次のコマンドを実行し、CLI のバージョンと各ターゲットの配布ファイルを確認する。
