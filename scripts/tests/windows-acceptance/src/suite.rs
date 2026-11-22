@@ -44,6 +44,43 @@ fn runner_path(name: &str) -> Result<PathBuf> {
         .with_context(|| format!("Missing {name}"))
 }
 
+// netsh expects an ordinary DOS/UNC path, even when Rust opened the file
+// through a mixture of separators or returned an extended-length path.
+fn firewall_program_arg(exe: &Path) -> Result<std::ffi::OsString> {
+    use std::path::{Component, Prefix};
+
+    let full = exe
+        .canonicalize()
+        .with_context(|| format!("Resolve firewall program {}", exe.display()))?;
+    let mut parts = full.components();
+    let mut arg = std::ffi::OsString::from("program=");
+    match parts.next() {
+        Some(Component::Prefix(prefix)) => match prefix.kind() {
+            Prefix::Disk(drive) | Prefix::VerbatimDisk(drive) => {
+                arg.push(format!("{}:", char::from(drive)))
+            }
+            Prefix::UNC(server, share) | Prefix::VerbatimUNC(server, share) => {
+                arg.push(r"\\");
+                arg.push(server);
+                arg.push(r"\");
+                arg.push(share);
+            }
+            _ => anyhow::bail!("Unsupported firewall program path: {}", full.display()),
+        },
+        _ => anyhow::bail!(
+            "Firewall program must have an absolute path: {}",
+            full.display()
+        ),
+    }
+    for part in parts {
+        if let Component::Normal(name) = part {
+            arg.push(r"\");
+            arg.push(name);
+        }
+    }
+    Ok(arg)
+}
+
 /// Keep the installed programs offline and leave the loopback Shiny session reachable.
 struct Firewall {
     name: String,
@@ -51,8 +88,7 @@ struct Firewall {
 }
 impl Firewall {
     fn block(&mut self, exe: &Path) -> Result<()> {
-        let mut program = std::ffi::OsString::from("program=");
-        program.push(exe);
+        let program = firewall_program_arg(exe)?;
         let status = Command::new("netsh")
             .args(["advfirewall", "firewall", "add", "rule", &format!("name={}", self.name),
                    "dir=out", "action=block", "profile=any",
@@ -231,5 +267,39 @@ pub(crate) fn run() -> Result<()> {
             Err(test.context(format!("Firewall cleanup also failed: {cleanup:#}")))
         }
         (test, cleanup) => test.and(cleanup),
+    }
+}
+
+#[cfg(test)]
+mod firewall_tests {
+    use super::*;
+
+    #[test]
+    fn netsh_receives_native_absolute_paths_with_spaces_and_unicode() -> Result<()> {
+        use std::os::windows::ffi::OsStringExt;
+
+        let temp = tempfile::tempdir()?;
+        let directory = temp.path().join("Program Files (x86)").join("利用者");
+        fs::create_dir_all(&directory)?;
+        let exe = directory.join("edge with spaces.exe");
+        fs::write(&exe, [])?;
+        let mixed = temp
+            .path()
+            .join("Program Files (x86)/利用者/edge with spaces.exe");
+        for path in [&mixed, &exe.canonicalize()?] {
+            use std::os::windows::ffi::OsStrExt;
+            let value: Vec<_> = firewall_program_arg(path)?.encode_wide().collect();
+            let prefix: Vec<_> = "program=".encode_utf16().collect();
+            let plain =
+                std::ffi::OsString::from_wide(value.strip_prefix(prefix.as_slice()).unwrap());
+            let text = plain.to_str().unwrap();
+            assert!(!text.contains('/') && !text.starts_with(r"\\?\"), "{text}");
+            assert!(
+                text.contains(r"Program Files (x86)\利用者\edge with spaces.exe"),
+                "{text}"
+            );
+            assert!(same_file::is_same_file(Path::new(&plain), &exe)?);
+        }
+        Ok(())
     }
 }
