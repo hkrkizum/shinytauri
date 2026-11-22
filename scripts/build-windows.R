@@ -478,10 +478,13 @@ run_tauri <- function(engine, config, triple, target_dir) {
     },
     add = TRUE
   )
+  # Cargo searches CARGO_HOME/bin before PATH for external subcommands. The
+  # Nix shell supplies the exact cross-build CLI even if users installed another.
+  tauri <- Sys.getenv("SHINYTAURI_CARGO_TAURI")
   status <- system2(
-    "cargo",
+    if (nzchar(tauri)) tauri else "cargo",
     c(
-      "tauri",
+      if (!nzchar(tauri)) "tauri",
       "build",
       "--target",
       triple,
