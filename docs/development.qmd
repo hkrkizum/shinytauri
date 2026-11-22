@@ -102,10 +102,17 @@ dist plan
 
 `cli-v<バージョン>` タグのリリースワークフローが各 OS 用のアーカイブを生成する。Windows の受け入れ試験では別プロジェクトとして初期化した最小アプリと Rhino デモをインストールし、WebView2 の操作、Quarto レポート生成、ウィンドウ終了時の R プロセスを確認する。リリース時にはビルド機に合う CLI のアーカイブとチェックサムを配布する。
 
-### CLI 0.2.1 のライセンス表示 {#cli-notices}
+### CLI と Windows ホストのライセンス表示 {#cli-notices}
 
-CLI 0.2.1 の Windows・Linux 用アーカイブに付属する `LICENSE` は shinytauri 自身の MIT ライセンスである。両方の実行ファイルが `clap_builder` を通じて利用する `strsim` 0.11.1 の著作権表示は、配布物から欠けている。次の配布に向けて各ターゲットのバイナリに組み込む依存ライブラリを特定し、必要な著作権表示、ライセンス本文、NOTICE を収録する。アーカイブを展開して、それらの文書を読めることも検査する。[strsim 0.11.1 の MIT ライセンス](https://github.com/rapidfuzz/strsim-rs/blob/v0.11.1/LICENSE)
+配布アーカイブの `LICENSE` は shinytauri の MIT ライセンスである。`notices/cli.txt` に Linux・Windows 用 CLI の依存ライブラリ、`notices/host.txt` に組み込みテンプレートから生成する Windows ホストの依存ライブラリとインストーラー部品の著作権・ライセンス表示を収録する。後者には Microsoft WebView2 Loader の SDK の表示も含まれる。`notices/rust-stdlib.html` は使用する Rust 標準ライブラリのライセンス文書である。
 
-両 OS の CLI にはホストのテンプレートも入っている。0.2.1 は Tauri の既定アイコンを画像データとして埋め込んでいる。テンプレートの既定アイコンを、生成したアプリとともに再配布できる画像に替えることも、次の配布に向けた課題である。[既定アイコンの条件とアプリ側の設定](configuration.qmd)
+プロジェクト名に関する許諾は、既定アイコンとは別に商標権者へ確認する事項である。[Tauri の商標ガイドライン](https://v2.tauri.app/about/trademark/)
 
-生成する Windows アプリのホストには、CLI とは別の依存ライブラリが入る。たとえば、0.2.1 で使う WebView2 Loader は Microsoft の SDK に由来する。ホストを再配布するときは SDK に付属する `LICENSE.txt` と `NOTICE.txt` も確認する。[Microsoft.Web.WebView2 1.0.3800.47](https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.3800.47)・[インストーラーの再配布とライセンス](distribution.qmd#redistribution)
+Rust のバージョンや依存を更新したときは、リポジトリのルートで次のコマンドを実行し、`notices/` の差分と新しい依存の配布条件を確認する。SDK やインストーラー部品を更新したときは、それらの配布元のライセンス文書も照合する。
+
+```sh
+rig run --rscript scripts/generate-notices.R
+rig run --rscript scripts/generate-notices.R --check
+```
+
+リリース試験は両 OS のアーカイブを展開してライセンス文書を原本と照合する。さらに Windows にアプリをインストールし、`offline/notices/` に入った文書と同梱物の記録を確かめる。[インストーラーの再配布と対応ソース](distribution.qmd#redistribution)
