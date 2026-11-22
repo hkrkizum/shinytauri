@@ -112,6 +112,7 @@ jobs:
             & $cli init $app --id org.example.minimal --r-version 4.5.3
             & $cli lock $app
             & $cli build $app
+            & "$env:GITHUB_WORKSPACE/scripts/tests/build-upgrade.ps1" $cli $app "$env:RUNNER_TEMP/minimal-upgrade-setup.exe"
           } else {
             & $cli init $app --id org.example.rhino
             # Keep init's actual file list and lock path. In particular, a
@@ -131,7 +132,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer-${{ matrix.app }}
-          path: ${{ runner.temp }}/${{ matrix.app }}-setup.exe
+          path: ${{ runner.temp }}/${{ matrix.app }}*-setup.exe
           compression-level: 0
           retention-days: 2
 
@@ -152,7 +153,7 @@ jobs:
         shell: pwsh
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          python -m pip install playwright==1.56.0 psutil==7.1.3 pefile==2024.8.26 pillow==11.3.0
+          python -m pip install playwright==1.56.0 psutil==7.1.3 pefile==2024.8.26 pillow==11.3.0 pywin32==312
           $edgeRoot = "${env:ProgramFiles(x86)}/Microsoft/EdgeWebView/Application"
           if (!(Test-Path "$edgeRoot/*/msedgewebview2.exe")) {
             $bootstrap = Join-Path $env:RUNNER_TEMP 'WebView2Setup.exe'

@@ -44,9 +44,15 @@ try {
         }
     }
     if ($hosts.minimal -eq $hosts.rhino) { throw 'Both products use the same executable' }
-    foreach ($kind in 'minimal','rhino') {
-        python "$PSScriptRoot/windows-ui.py" $kind $hosts[$kind] $evidence.FullName
+    python "$PSScriptRoot/windows-ui.py" minimal $hosts.minimal $evidence.FullName
+    & "$PSScriptRoot/check-upgrade.ps1" $hosts.minimal $evidence.FullName
+    # The separately registered Rhino product must still run after the update.
+    $rhino = Get-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Uninstall/shinytauri-smoke-rhino'
+    if ($rhino.DisplayVersion -ne '1.2.3' -or
+        (Join-Path $rhino.InstallLocation.Trim('"') $rhino.MainBinaryName) -ne $hosts.rhino) {
+        throw 'The minimal upgrade changed the registered Rhino installation'
     }
+    python "$PSScriptRoot/windows-ui.py" rhino $hosts.rhino $evidence.FullName
 } finally {
     Get-NetFirewallRule -Group $group -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     foreach ($kind in 'minimal','rhino') {
