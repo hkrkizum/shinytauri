@@ -197,7 +197,10 @@ fn init_diagnoses_incompatible_root_lock() {
 #[test]
 fn build_enters_one_private_shell_and_passes_external_paths_verbatim() {
     use std::os::unix::fs::PermissionsExt;
-    let root = tempdir().unwrap();
+    let executable = fs::canonicalize(env!("CARGO_BIN_EXE_shinytauri")).unwrap();
+    // A hard link on the binary's filesystem needs no write handle that a parallel
+    // fork could inherit and hold open during exec (ETXTBSY).
+    let root = tempfile::tempdir_in(executable.parent().unwrap()).unwrap();
     let bin = root.path().join("bin");
     let config = root.path().join("外部 $ (spec).toml");
     fs::create_dir(&bin).unwrap();
@@ -221,6 +224,7 @@ exec "$@"
         r#"#!/bin/sh
 set -eu
 [ -x "$SHINYTAURI_CLI_EXECUTABLE" ]
+test "$SHINYTAURI_CLI_EXECUTABLE" = "$PROBE/bin/編集 App CLI"
 "$SHINYTAURI_CLI_EXECUTABLE" --version > "$PROBE/cli-version"
 case "$1" in
 proj)
@@ -243,10 +247,10 @@ esac
     for exe in [&fake_nix, &fake_rig] {
         fs::set_permissions(exe, fs::Permissions::from_mode(0o755)).unwrap()
     }
-    let copied = bin.join("編集 App CLI");
-    fs::copy(env!("CARGO_BIN_EXE_shinytauri"), &copied).unwrap();
+    let named = bin.join("編集 App CLI");
+    fs::hard_link(executable, &named).unwrap();
     let linked = bin.join("リンク cli");
-    std::os::unix::fs::symlink(copied, &linked).unwrap();
+    std::os::unix::fs::symlink(named, &linked).unwrap();
     let output = Command::new(linked)
         .current_dir(root.path())
         .args([
