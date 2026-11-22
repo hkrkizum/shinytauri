@@ -12,10 +12,12 @@ use std::{
 };
 
 const POLL: Duration = Duration::from_millis(150);
-const CONTROL: Duration = Duration::from_secs(15);
 const NORMAL: Duration = Duration::from_secs(30);
 const STARTUP: Duration = Duration::from_secs(60);
 const REPORT: Duration = Duration::from_secs(240);
+// headless_chrome counts browser-level events, not our tab's DOM polling.
+// Keep its connection alive throughout the longest quiet period in this suite.
+const BROWSER_IDLE: Duration = REPORT.saturating_add(Duration::from_secs(30));
 const FAILURE_MARKER: &str = "Acceptance fixture startup failure";
 
 pub struct BrowserPage {
@@ -54,7 +56,7 @@ impl BrowserPage {
                 let ws = info["webSocketDebuggerUrl"]
                     .as_str()
                     .context("No browser WebSocket URL")?;
-                Browser::connect_with_timeout(ws.to_owned(), CONTROL)
+                Browser::connect_with_timeout(ws.to_owned(), BROWSER_IDLE)
             };
             match attempt() {
                 Ok(browser) => break browser,
@@ -404,9 +406,12 @@ mod tests {
                 err.to_string().contains("Timed out waiting for #total"),
                 "{err}"
             );
-            page.tab.navigate_to("about:blank")?;
+            // A held R startup can produce no browser-level events for over
+            // 15 s even while the driver polls this tab's DOM. Navigation must
+            // still work when the host finally changes pages.
+            page.value("setTimeout(() => location.assign('about:blank'), 17000); true")?;
             page.until(
-                "test page navigation",
+                "navigation after a quiet startup page",
                 NORMAL,
                 "location.href === 'about:blank'",
             )?;
