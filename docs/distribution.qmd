@@ -11,7 +11,29 @@ title: "Windows での動作確認"
 3. 画面を操作し、入力に応じて出力が変わることを確認する。画像や CSS、同梱データ、レポートなど、アプリが使うファイルも試す。
 4. アプリのウィンドウを閉じて、同梱 R と子プロセスが終了したことをタスク マネージャーで確認する。オフラインのまま再起動する。
 
-エンドユーザーが使うのはデスクトップアプリのウィンドウである。Tauri ホストは同梱 R を起動し、Shiny が `127.0.0.1` の空きポートで待ち受けてからその URL を WebView2 に表示する。外部サービスにアクセスするアプリを配布した場合、そのサービスを使う操作には引き続きネットワーク接続が必要である。
+外部サービスにアクセスするアプリを配布した場合、そのサービスを使う操作には引き続きネットワーク接続が必要である。
+
+## 起動の進み具合とログ
+
+Windows アプリを開くと、待ち画面に起動の経過時間と履歴が表示される。同梱 R が起動し、Shiny が待受ポートを通知すると、Tauri は `127.0.0.1` に接続する。HTTP 応答を受け取るとアプリ画面に切り替わる。ログインが必要なアプリでは、認証を求める応答も疎通の確認に使う。
+
+起動に失敗すると、待ち画面で最後に進んだ段階とログファイルの場所を確認できる。ログの保存先は `%LOCALAPPDATA%\<identifier>\logs` である。ここに書き込めない場合も画面には起動履歴が残る。通常は起動ごとに次の 2 ファイルが作られる。
+
+| ファイル | 調べられること |
+| --- | --- |
+| `host-*.jsonl` | Tauri がどこまで起動処理を進めたか。1 行が 1 件の JSON レコードで、`event` は処理名、`elapsed_ms` は起動からのミリ秒数を表す。`http_response` の行には HTTP ステータス、エラーの行には原因が記録される。 |
+| `shiny-*.log` | 同じ起動で R が標準出力と標準エラーに書いた内容。パッケージの不足やアプリ初期化時のエラーを調べる際に使う。 |
+
+次は、識別子が `jp.example.counter` のアプリで、直近のホストログを PowerShell から読む例である。
+
+```powershell
+$dir = Join-Path $env:LOCALAPPDATA 'jp.example.counter\logs'
+$log = Get-ChildItem -LiteralPath $dir -Filter 'host-*.jsonl' |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+Get-Content -LiteralPath $log.FullName -Encoding UTF8 |
+    ForEach-Object { $_ | ConvertFrom-Json } |
+    Format-Table elapsed_ms, level, event, http_status, detail -Wrap
+```
 
 ## エラーの切り分け
 
@@ -21,7 +43,7 @@ title: "Windows での動作確認"
 | ファイルやディレクトリをビルド時に見つけられない | `app` と `lock` は設定ファイルから、`files` と `emptyDirs` はアプリからたどる。綴りと大文字・小文字を照合する。 |
 | 依存定義とロックが一致しない | `dependencyFile` や `packages` を変更した後は `shinytauri lock .` を再実行する。別名の設定では `shinytauri lock --config packaging/bundle.toml` とする。 |
 | Windows ターゲット、R バージョン、Windows バイナリを指すエラーが出る | [Windows 用の依存定義](dependencies.qmd)を確認する。Linux 側でインストール済みのパッケージだけでは配布できない。 |
-| インストール後に Shiny が立ち上がらない | ウィンドウタイトルに表示されたログを開く。エラーが示す R パッケージは依存定義に、画像やデータは `files` に含まれているか確認する。 |
+| インストール後に Shiny が立ち上がらない | ホストログで最後に到達した段階を確認し、同じ起動の R ログを読む。不足している R パッケージは依存定義に、画像やデータは `files` に含まれているか確認する。 |
 | Quarto レポートだけ失敗する | `quarto = true`、文書の相対パス、R の実行時依存を確認する。アプリは同梱 Quarto の場所を `SHINYTAURI_QUARTO` から取得する。 |
 
 ## インストーラーの中身

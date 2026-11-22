@@ -3021,6 +3021,9 @@ dependencies = [
 name = "shinytauri"
 version = "0.1.0"
 dependencies = [
+ "httparse",
+ "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tempfile",

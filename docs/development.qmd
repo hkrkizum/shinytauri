@@ -83,10 +83,10 @@ nix develop .#docs -c quarto preview docs
 
 ## CLI をリリースする
 
-CLI の配布には [dist](https://opensource.axo.dev/cargo-dist/) を使う。バージョンとターゲットを確認し、リポジトリのルートでリリース予定のアーカイブを一覧する。次は `0.1.0` の例である。
+CLI の配布には [dist](https://opensource.axo.dev/cargo-dist/) を使う。リポジトリのルートで次のコマンドを実行し、CLI のバージョンと各ターゲットの配布ファイルを確認する。
 
 ```sh
-dist plan --tag v0.1.0
+dist plan
 ```
 
 `cli-v<バージョン>` タグのリリースワークフローが各 OS 用のアーカイブを生成する。Windows の受け入れ試験では別プロジェクトとして初期化した最小アプリと Rhino デモをインストールし、WebView2 の操作、Quarto レポート生成、ウィンドウ終了時の R プロセスを確認する。リリース時にはビルド機に合う CLI のアーカイブとチェックサムを配布する。

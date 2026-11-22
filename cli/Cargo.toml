@@ -4,7 +4,7 @@ edition     = "2024"
 license     = "MIT"
 name        = "shinytauri-cli"
 publish     = false
-version     = "0.1.0"
+version     = "0.1.1"
 
 [[bin]]
 name = "shinytauri"
