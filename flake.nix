@@ -126,6 +126,12 @@
                 nushell
               ];
             };
+          branding = pkgs.mkShellNoCC {
+            packages = [
+              (pkgs.rWrapper.override { packages = [ pkgs.rPackages.ggplot2 ]; })
+            ];
+            FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.inter ]; };
+          };
           windows = pkgs.mkShell {
             packages =
               windowsBuildTools

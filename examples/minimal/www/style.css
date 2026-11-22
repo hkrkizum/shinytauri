@@ -1,4 +1,115 @@
+:root {
+  color-scheme: light;
+  font-size: 100%;
+  --blue: #00468b;
+  --red: #ed0000;
+  --ink: #161b21;
+  --muted: #505a66;
+  --surface: #f3f5f7;
+  --rule: #d5dde5;
+}
+
+body {
+  background: var(--surface);
+  color: var(--ink);
+  font-family: system-ui, "Yu Gothic UI", Meiryo, sans-serif;
+  font-size: 16px;
+}
+
+body > .container-fluid {
+  padding: 0;
+}
+
+.app-shell {
+  max-width: 52rem;
+  margin-inline: auto;
+  padding-inline: clamp(1.25rem, 6vw, 3rem);
+}
+
+.app-header {
+  background: white;
+  border-block-end: 1px solid var(--rule);
+  padding-block: 1.1rem;
+}
+
+.app-name {
+  color: var(--blue);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.counter-page {
+  padding-block: clamp(2rem, 6vw, 3.5rem);
+}
+
+.counter-page h1 {
+  margin: 0 0 1.5rem;
+  font-size: clamp(2rem, 6vw, 2.75rem);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.counter-panel {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1.25rem 2rem;
+  padding: clamp(1.25rem, 5vw, 2rem);
+  border: 1px solid var(--rule);
+  border-block-start: 4px solid var(--blue);
+  border-radius: .75rem;
+  background: white;
+  box-shadow: 0 .5rem 1.5rem rgb(22 27 33 / 6%);
+}
+
+.counter-panel::before {
+  position: absolute;
+  inset-block-start: -4px;
+  inset-inline-end: 1.5rem;
+  width: 2.75rem;
+  height: 4px;
+  background: var(--red);
+  content: "";
+}
+
+.counter-panel h2 {
+  margin: 0 0 .5rem;
+  color: var(--muted);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
 #total {
-  font-size: 2rem;
+  font-size: clamp(3.25rem, 11vw, 5.25rem);
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.counter-panel .counter-action {
+  border: 1px solid var(--blue);
+  border-radius: .5rem;
+  padding: .7rem 1.25rem;
+  background: var(--blue);
+  color: white;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.counter-panel .counter-action:hover {
+  background: #00366b;
+}
+
+.counter-panel .counter-action:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 3px;
+}
+
+@media (max-width: 29rem) {
+  .counter-panel .counter-action {
+    width: 100%;
+  }
 }

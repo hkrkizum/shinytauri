@@ -1,8 +1,12 @@
-# shinytauri
+# shinytauri <img src="docs/images/shinytauri.svg" align="right" width="144" alt="shinytauri の六角形ロゴ">
 
 shinytauri は R の [Shiny](https://github.com/rstudio/shiny) アプリを Windows x64 用のインストーラーにまとめる CLI である。既存のプロジェクトで実行すると、アプリ、ポータブル R、実行に使う R パッケージを同梱した `*-setup.exe` ができる。配布先では [Tauri®](https://github.com/tauri-apps/tauri) のウィンドウにアプリが開く。
 
 [利用マニュアル](https://hkrkizum.github.io/shinytauri/) · [リリース](https://github.com/hkrkizum/shinytauri/releases) · [開発に参加する](docs/development.qmd)
+
+![青い「1 を足す」ボタンと現在のカウントを表示した最小 Shiny アプリ](docs/images/minimal-counter.png)
+
+`examples/minimal/` は Shiny のカウンターアプリである。付属の配布設定で Windows 用インストーラーを作成できる。[サンプルアプリを動かす](docs/demo.qmd)
 
 ## インストール
 
@@ -44,6 +48,6 @@ shinytauri build .
 
 shinytauri 自身のコードと既定アイコンは [MIT License](LICENSE) で配布する。CLI の依存ライブラリの著作権表示とライセンス本文は配布アーカイブの `notices/` にある。生成したアプリでは `offline/notices/` にホストのライセンス文書と同梱物の一覧が入る。R、パッケージ、アプリの素材にはそれぞれの配布条件が適用される。[CLI のライセンス表示](https://hkrkizum.github.io/shinytauri/development.html#cli-notices)・[インストーラーの再配布と対応ソース](https://hkrkizum.github.io/shinytauri/distribution.html#redistribution)
 
-Quarto マニュアルの本文と自作の図版は CC BY 4.0（表示 4.0 国際）で公開する。マニュアル内のサンプルコードには MIT License が適用される。[マニュアルのライセンス](docs/license.qmd)
+リポジトリのロゴ、Quarto マニュアルの本文と自作の図版は CC BY 4.0（表示 4.0 国際）で公開する。マニュアル内のサンプルコードには MIT License が適用される。[マニュアルのライセンス](docs/license.qmd)
 
 shinytauri は独立したプロジェクトである。TAURI は The Tauri Programme within the Commons Conservancy の登録商標である。[Tauri の商標ガイドライン](https://v2.tauri.app/about/trademark/)

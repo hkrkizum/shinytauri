@@ -1,8 +1,12 @@
 ---
-title: "Rhino デモを動かす"
+title: "サンプルアプリを動かす"
 ---
 
-リポジトリの `src-shiny/` に Rhino 製のサイコロ集計アプリがある。2 個のサイコロを振った結果を集計し、Quarto のダッシュボードを HTML ファイルとして保存できる。素の Shiny アプリと配布設定を比べるには `examples/minimal/` と `bundles/minimal/` を使う。
+`examples/minimal/` に Shiny のカウンターアプリがある。アプリのコードは `app.R`、配色とレイアウトは `www/style.css`、Windows 向けの配布設定は `bundles/minimal/` にある。
+
+![最小 Shiny アプリをブラウザーで起動した画面](images/minimal-counter.png){fig-alt="青い「1 を足す」ボタンと現在のカウント"}
+
+`src-shiny/` にある Rhino デモは2個のサイコロを振った結果を集計し、Quarto のダッシュボードを HTML ファイルに保存できる。
 
 ## デモのインストーラーを作る
 
