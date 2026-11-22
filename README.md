@@ -44,4 +44,6 @@ shinytauri build .
 
 shinytauri 自身のコードと既定アイコンは [MIT License](LICENSE) で配布する。CLI の依存ライブラリの著作権表示とライセンス本文は配布アーカイブの `notices/` にある。生成したアプリでは `offline/notices/` にホストのライセンス文書と同梱物の一覧が入る。R、パッケージ、アプリの素材にはそれぞれの配布条件が適用される。[CLI のライセンス表示](https://hkrkizum.github.io/shinytauri/development.html#cli-notices)・[インストーラーの再配布と対応ソース](https://hkrkizum.github.io/shinytauri/distribution.html#redistribution)
 
+Quarto マニュアルの本文と自作の図版は CC BY 4.0（表示 4.0 国際）で公開する。マニュアル内のサンプルコードには MIT License が適用される。[マニュアルのライセンス](docs/license.qmd)
+
 shinytauri は独立したプロジェクトである。TAURI は The Tauri Programme within the Commons Conservancy の登録商標である。[Tauri の商標ガイドライン](https://v2.tauri.app/about/trademark/)

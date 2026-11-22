@@ -1,0 +1,11 @@
+---
+title: "マニュアルのライセンス"
+---
+
+shinytauri マニュアルの本文と自作の図版は [クリエイティブ・コモンズ 表示 4.0 国際（CC BY 4.0）](https://creativecommons.org/licenses/by/4.0/){rel="license"} で公開する。
+
+転載や翻訳を公開するときは、著作者名とライセンスを表示する。翻訳や編集などの変更があれば、その旨も記す。出典は次のように表記できる。
+
+> [shinytauri マニュアル](https://hkrkizum.github.io/shinytauri/)（Hikaru Koizumi）・[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+
+マニュアル内のサンプルコードには [MIT License](https://github.com/hkrkizum/shinytauri/blob/main/LICENSE) が適用される。第三者の素材には、出典に示す利用条件が適用される。
