@@ -230,16 +230,17 @@ stage_runtime <- function(target, stage, payload) {
   )
 }
 
+quarto_version <- "1.11.9"
+quarto_sha256 <- "eda220a2f39c392f622049de013ddf7b4dfdf019ba877f251be14ce43e5734d1"
+quarto_binary_url <- sprintf(
+  "https://github.com/quarto-dev/quarto-cli/releases/download/v%s/quarto-%s-win.zip",
+  quarto_version,
+  quarto_version
+)
+
 stage_quarto <- function(stage, payload) {
-  version <- "1.11.9"
-  digest <- "eda220a2f39c392f622049de013ddf7b4dfdf019ba877f251be14ce43e5734d1"
   archive <- file.path(stage, "quarto.zip")
-  url <- sprintf(
-    "https://github.com/quarto-dev/quarto-cli/releases/download/v%s/quarto-%s-win.zip",
-    version,
-    version
-  )
-  fetch_archives(url, archive, digest)
+  fetch_archives(quarto_binary_url, archive, quarto_sha256)
   dest <- file.path(payload, "quarto")
   stopifnot(dir.create(dest))
   unpack(archive, dest, c("bin", "share"))
@@ -739,7 +740,13 @@ run_tauri <- function(engine, config, triple, target_dir) {
   if (status != 0L) stop("cargo tauri build failed with status ", status)
 }
 
-publish_installer <- function(target_dir, triple, output, sources) {
+publish_installer <- function(
+  target_dir,
+  triple,
+  output,
+  sources,
+  publish_sources
+) {
   nsis <- file.path(target_dir, triple, "release/bundle/nsis")
   installer <- list.files(nsis, pattern = "[.]exe$", full.names = TRUE)
   if (length(installer) != 1L || file.info(installer)$size == 0) {
@@ -767,7 +774,13 @@ publish_installer <- function(target_dir, triple, output, sources) {
   ) {
     stop("Installer would overwrite an app resource: ", file)
   }
-  if (!file.copy(installer, part) || !file.rename(part, file)) {
+  if (!file.copy(installer, part)) {
+    stop("Could not copy installer to ", output)
+  }
+  # Publish the immutable sources first: an installer can never refer to a
+  # partially copied archive, even after interruption or a concurrent build.
+  publish_sources()
+  if (!file.rename(part, file)) {
     stop("Could not publish installer to ", file)
   }
   message("Installer: ", file)
@@ -778,6 +791,7 @@ build_windows <- function(profile, output = NULL, engine = getwd()) {
   options(timeout = max(120L, getOption("timeout")))
   spec <- read_bundle(profile)
   engine <- absolute_path(engine)
+  source(file.path(engine, "scripts/distribution-sources.R"), local = TRUE)
   if (spec$managed || isTRUE(spec$checkMinimal)) {
     source(file.path(engine, "scripts/runtime-deps.R"), local = TRUE)
   }
@@ -806,10 +820,19 @@ build_windows <- function(profile, output = NULL, engine = getwd()) {
 
   tauri <- file.path(engine, "src-tauri")
   target_dir <- file.path(tauri, "target")
+  triple <- if (.Platform$OS.type == "windows") {
+    "x86_64-pc-windows-msvc"
+  } else {
+    "x86_64-pc-windows-gnu"
+  }
+  if (is.null(output) && !is.null(spec[["sourceBundle"]])) {
+    output <- file.path(target_dir, triple, "release/bundle/nsis")
+  }
   dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
   stage <- tempfile("offline-", tmpdir = target_dir)
   stopifnot(dir.create(stage))
   on.exit(unlink(stage, recursive = TRUE), add = TRUE)
+  bundle <- prepare_source_bundle(spec, profile, stage, output, cache)
   payload <- file.path(stage, "payload")
   stage_app(spec, file.path(payload, "app"), output)
   if (isTRUE(spec$checkMinimal)) {
@@ -820,6 +843,14 @@ build_windows <- function(profile, output = NULL, engine = getwd()) {
     stage_quarto(stage, payload)
   }
   stage_packages(target, stage, payload)
+  stage_distribution_notices(
+    engine,
+    target,
+    stage,
+    payload,
+    spec$quarto,
+    bundle
+  )
   stopifnot(
     file.copy(file.path(engine, "scripts/serve-bundled.R"), payload),
     file.copy(file.path(engine, "LICENSE"), payload)
@@ -861,10 +892,15 @@ build_windows <- function(profile, output = NULL, engine = getwd()) {
     config,
     auto_unbox = TRUE
   )
-  triple <- if (.Platform$OS.type == "windows") {
-    "x86_64-pc-windows-msvc"
+  if (is.null(bundle)) {
+    message(
+      "No sourceBundle configured. For redistribution, supply the required corresponding sources and build instructions separately. See offline/notices/components.json."
+    )
   } else {
-    "x86_64-pc-windows-gnu"
+    message(
+      "For redistribution, provide the installer with its corresponding source archive: ",
+      file.path(output, bundle$file)
+    )
   }
   if (!is.null(output)) {
     # Keep this build's bundle separate, even when earlier installers exist.
@@ -874,7 +910,8 @@ build_windows <- function(profile, output = NULL, engine = getwd()) {
       cargo_dir,
       triple,
       output,
-      c(file.path(spec$app, spec$files), spec[["icon"]], spec[["licenseFile"]])
+      c(file.path(spec$app, spec$files), spec[["icon"]], spec[["licenseFile"]]),
+      function() publish_source_bundle(bundle, output)
     ))
   }
   # Legacy mise builds share the target tree and leave the installer there.

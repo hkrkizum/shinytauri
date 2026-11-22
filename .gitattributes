@@ -1,0 +1,3 @@
+notices/* text eol=lf -whitespace
+scripts/notice-sources/installer-components.txt text eol=lf -whitespace
+scripts/tests/fixtures/source-bundle/example.R text eol=lf

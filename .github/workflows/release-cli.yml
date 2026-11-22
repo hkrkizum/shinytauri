@@ -62,7 +62,10 @@ jobs:
             tar -xJf "$package.tar.xz" -C "$tmp"
             bin="$tmp/$package/shinytauri"
           fi
-          cmp "$(dirname "$bin")/LICENSE" "$repo/LICENSE"
+          for file in LICENSE notices/cli.txt notices/host.txt notices/rust-stdlib.html; do
+            test -s "$repo/$file"
+            cmp "$(dirname "$bin")/$file" "$repo/$file"
+          done
           cp -r "$repo/examples/minimal" "$tmp/external app"
           cd "$tmp/external app"
           test "$("$bin" --version)" = "shinytauri ${RELEASE_TAG#cli-v}"

@@ -79,4 +79,17 @@ CLI は [portable-r-windows の公式リリース](https://github.com/portable-r
 - **対応するソースコード**　R など GPL のバイナリを再配布する際は、適用するライセンスが認める方法で、受領者が対応する完全なソースを入手できるようにする。たとえばウェブで配布する場合は、配布したバイナリに対応するソースと必要なビルドスクリプトを、インストーラーと同じ配布場所から取得できるようにする方法がある。[GPLv2 第3条](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html#section3)・[GPLv3 第6条](https://www.gnu.org/licenses/gpl-3.0.html#section6)
 - **ホストと追加の同梱物**　ホストに組み込む Tauri と Rust の依存ライブラリ、アプリに追加したフォントや画像も対象になる。`quarto = true` の場合、Quarto 1.11.9 本体は MIT、その付属ツールの一つである Pandoc 3.10 は GPLv2 以降で配布されている。アプリ側で用意したライセンス文書は `files` に追加すれば `offline/app/` から読める。[同梱ファイルの設定](configuration.qmd)・[Quarto 本体のライセンス](https://github.com/quarto-dev/quarto-cli/blob/v1.11.9/COPYING.md)・[Pandoc 3.10 のライセンス](https://github.com/jgm/pandoc/blob/3.10/pandoc.cabal)
 
-CLI 0.2.1 は、ホストに組み込む Rust ライブラリのライセンス文書一式や、同梱するバイナリに対応するソース一式を生成しない。配布前に、実際に使った版に合わせて用意する。
+インストール先の `offline/notices/host.txt` と `rust-stdlib.html` にホストとその依存ライブラリのライセンス表示が入る。同じ場所の `components.json` には、実際に同梱した R とパッケージのバージョン、取得元、Quarto の有無などを記録する。この一覧を起点に、バイナリに対応するソースを準備できる。
+
+### 対応ソースをインストーラーと一緒に配布する
+
+1. 配布に使うバージョンのソース、適用したパッチ、ビルド・インストールに必要なスクリプトと説明を集める。Windows 版 R では本体に加えて組み込まれたライブラリも確認する。詳しくはそのバージョンの `offline/R/doc/COPYRIGHTS` にある。Quarto を同梱した場合は Pandoc などの付属ツールも確認する。自分で追加した依存や変更分も対象になる。
+2. 確認した資料を専用ディレクトリかアーカイブにまとめ、`shinytauri.toml` の `sourceBundle` に指定する。準備用のディレクトリはアプリの配布ファイルや `dist/` と分ける。たとえば設定ファイルの隣に `sources.tar.gz` を用意した場合は次のように書く。
+
+   ```toml
+   sourceBundle = "sources.tar.gz"
+   ```
+
+3. `shinytauri build .` を実行する。指定した資料のアーカイブが、SHA-256 を含むファイル名で `*-setup.exe` と同じ出力先に置かれる。`components.json` でファイル名と SHA-256 を確認し、インストーラーとアーカイブを同じ配布場所に掲載する。
+
+`sourceBundle` を省略すると、CLI は同梱物の一覧を作り、ソースアーカイブの作成を省く。対応ソースを別の方法で提供する場合は、その入手方法を利用者に知らせる。アーカイブに必要な資料がすべて入っているかは配布者が確認する。特に再配布用 ZIP、ロックファイル、上流へのリンクだけでは、配布したバイナリを作るための材料がそろわない場合がある。

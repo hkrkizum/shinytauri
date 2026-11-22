@@ -2,7 +2,8 @@
   "bundle": {
     "targets": ["nsis"],
     "windows": {
-      "webviewInstallMode": { "type": "skip" }
+      "webviewInstallMode": { "type": "skip" },
+      "nsis": { "installerIcon": "icons/icon.ico" }
     }
   }
 }

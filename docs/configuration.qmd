@@ -42,6 +42,7 @@ quarto = false
 | `publisher` | Windows の「インストールされているアプリ」とアプリの実行ファイルに表示する発行元。 |
 | `icon` | アプリとインストーラーに使う Windows アイコン（`.ico`）。 |
 | `licenseFile` | インストーラーの同意画面に表示する UTF-8 のテキストファイル。 |
+| `sourceBundle` | インストーラーと一緒に配布する対応ソースのアーカイブまたは専用ディレクトリ。設定ファイルからの相対パスで指定できる。[対応ソースの準備](distribution.qmd#redistribution) |
 | `quarto` | `true` なら Windows 用 Quarto CLI を同梱する。既定値は `false`。 |
 
 同じ PC に複数のアプリを入れる場合は、製品ごとに `productName` と `identifier` の両方を変える。同じ製品を更新するときは両方を保ち、`version` を上げる。
@@ -58,7 +59,7 @@ licenseFile = "branding/利用規約.txt"
 
 `publisher` を省くと、通常は `identifier` の 2 番目の要素が発行元になる。たとえば `jp.example.counter` の発行元は `example` になる。Windows インストーラーは発行元と製品名を使ってインストール先を記録する。配布済みの製品を更新するときは、これまでの発行元を使う。
 
-`icon` を省くと、CLI 0.2.1 は Tauri の既定ロゴを使う。Tauri の商標ガイドラインに従い、アプリを配布するときは、配布する権利を持つ `.ico` を指定する。既定ロゴの作者は Alve Larsson、Daniel Thompson-Yvetot、Guillaume Chau であり、ロゴのライセンスは CC BY-NC-ND である。[Tauri のライセンスとクレジット](https://github.com/tauri-apps/tauri/tree/tauri-cli-v2.12.6#licenses)・[商標ガイドラインのアプリ向けの規定](https://v2.tauri.app/about/trademark/#applications)
+`icon` を省くと、CLI 0.2.2 はウィンドウに折れ線グラフを描いた shinytauri 独自のアイコンを使う。製品のアイコンに替える場合は、再配布する権利を持つ `.ico` を指定する。以前の CLI で Tauri の既定ロゴのままインストーラーを作った場合は、0.2.2 以降でビルドし直せる。[配布済みアプリの更新](distribution.qmd)・[Tauri の商標ガイドライン](https://v2.tauri.app/about/trademark/#applications)
 
 `licenseFile` を指定すると、対話形式のインストール時に利用規約が表示される。省略時とサイレントインストール時には同意画面を表示しない。インストール後も規約を読めるようにするには、アプリ内に規約ファイルを置き、`files` にそのパスを加える。第三者のソフトウェアを含む場合は、[インストーラーの再配布とライセンス](distribution.qmd#redistribution)も参照する。
 
@@ -89,6 +90,8 @@ shinytauri inspect
 `Missing entries` にパスが出たら、移動したファイルのパスを設定で直すか、削除済みの項目を設定から外す。配布対象やロックが欠けているとき、設定が不正なときは終了コードが 1 になる。未登録の候補があるだけなら 0 である。`Windows R` と `Main packages` は、ロックが指定する Windows 向け R のバージョンと、`main` グループのパッケージ数を示す。依存定義とロックの照合や配布パッケージの取得はビルド時に行う。
 
 `publisher`、`icon`、`licenseFile` を指定した場合、`inspect` は発行元とインストーラー用ファイルのうち指定した項目を表示する。ファイルのパスは設定ファイルを基準に解決し、ファイルが存在して空でないことを確かめる。アイコンとライセンス文書の形式はビルド時に検証する。
+
+対応ソースを渡す場合は、`sourceBundle` を指定して `inspect` を実行する。`Source bundle` に、アーカイブまたはディレクトリの絶対パスが表示される。
 
 ## Quarto を使うアプリ
 

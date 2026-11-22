@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - 'cli/**'
+      - 'notices/**'
       - 'src-tauri/**'
       - 'src-shiny/**'
       - 'ui/**'
@@ -69,7 +70,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer-${{ matrix.app }}
-          path: ${{ runner.temp }}/${{ matrix.app }}*-setup.exe
+          path: |
+            ${{ runner.temp }}/${{ matrix.app }}*-setup.exe
+            ${{ runner.temp }}/shinytauri-sources-*.tar.gz
+          if-no-files-found: error
           compression-level: 0
           retention-days: 2
 
@@ -80,7 +84,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: scripts/tests
+          sparse-checkout: |
+            scripts/tests
+            notices
       - uses: actions/download-artifact@v4
         with:
           pattern: windows-installer-*

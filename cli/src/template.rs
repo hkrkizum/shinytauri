@@ -12,6 +12,8 @@ macro_rules! engine_files {
 
 const ENGINE_FILES: &[(&str, &[u8])] = engine_files![
     "LICENSE",
+    "notices/host.txt",
+    "notices/rust-stdlib.html",
     "flake.nix",
     "flake.lock",
     "nix/rig.nix",
@@ -19,6 +21,7 @@ const ENGINE_FILES: &[(&str, &[u8])] = engine_files![
     "rproj.toml",
     "rproj.lock",
     "scripts/build-windows.R",
+    "scripts/distribution-sources.R",
     "scripts/runtime-deps.R",
     "scripts/serve-bundled.R",
     "ui/index.html",
@@ -94,6 +97,26 @@ mod tests {
         }
         assert!(engine.path().join("rproj.lock").is_file());
         assert!(!engine.path().join("src-shiny").exists());
+    }
+
+    #[test]
+    fn extracted_engine_includes_the_distribution_script_and_host_notices_verbatim() {
+        let engine = tempfile::tempdir().unwrap();
+        extract(engine.path()).unwrap();
+        let source = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        for asset in [
+            "scripts/distribution-sources.R",
+            "notices/host.txt",
+            "notices/rust-stdlib.html",
+        ] {
+            let file =
+                fs::read(engine.path().join(asset)).unwrap_or_else(|e| panic!("{asset}: {e}"));
+            assert!(!file.is_empty(), "empty {asset}");
+            assert!(
+                file == fs::read(source.join(asset)).unwrap(),
+                "changed {asset}"
+            );
+        }
     }
 
     #[test]
