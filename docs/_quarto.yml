@@ -11,6 +11,8 @@ website:
   repo-url: https://github.com/hkrkizum/shinytauri
   page-navigation: true
   search: true
+  page-footer:
+    left: "[マニュアルのライセンス（CC BY 4.0）](license.qmd)"
   navbar:
     title: shinytauri
     left:
