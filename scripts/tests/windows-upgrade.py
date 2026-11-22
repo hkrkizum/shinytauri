@@ -7,9 +7,11 @@ import time
 from pathlib import Path
 
 import psutil
+import pywintypes
 import win32con
 import win32gui
 import win32process
+from PIL import ImageGrab
 
 
 def visible_windows(parent=None):
@@ -28,13 +30,27 @@ def visible_windows(parent=None):
 
 
 def control_text(hwnd):
-    length = win32gui.SendMessage(hwnd, win32con.WM_GETTEXTLENGTH, 0, 0)
-    text = ctypes.create_unicode_buffer(length + 1)
-    win32gui.SendMessage(hwnd, win32con.WM_GETTEXT, len(text), ctypes.addressof(text))
-    return text.value.replace("&", "")
+    try:
+        length = win32gui.SendMessageTimeout(
+            hwnd, win32con.WM_GETTEXTLENGTH, 0, 0, win32con.SMTO_ABORTIFHUNG, 1000
+        )[1]
+        text = ctypes.create_unicode_buffer(length + 1)
+        win32gui.SendMessageTimeout(
+            hwnd, win32con.WM_GETTEXT, len(text), ctypes.addressof(text), win32con.SMTO_ABORTIFHUNG, 1000
+        )
+        return text.value.replace("&", "")
+    except pywintypes.error as error:
+        if error.winerror in (1400, 1460):  # Dialog closed or is busy with its child uninstaller.
+            return ""
+        raise
 
 
-def upgrade(setup, timeout=240):
+def capture(window, path):
+    # Capture the desktop region so the wizard's child controls are visible.
+    ImageGrab.grab(bbox=win32gui.GetWindowRect(window), all_screens=True).save(path)
+
+
+def upgrade(setup, evidence, timeout=240):
     installer = subprocess.Popen([setup])
     process = psutil.Process(installer.pid)
     saw_previous_version = False
@@ -51,25 +67,29 @@ def upgrade(setup, timeout=240):
                     continue
                 if win32gui.GetClassName(window) != "#32770" or not win32gui.IsWindowEnabled(window):
                     continue
+                primary = win32gui.GetDlgItem(window, win32con.IDOK)
+                if not primary or not win32gui.IsWindowEnabled(primary):
+                    continue
                 buttons = {
                     control_text(h): h for h in visible_windows(window)
                     if win32gui.GetClassName(h) == "Button"
                 }
                 # Both defaults matter: uninstall v1 and keep application data.
-                if "Uninstall before installing" in buttons:
+                if "Uninstall before installing" in buttons and not saw_previous_version:
                     choice = buttons["Uninstall before installing"]
                     assert win32gui.SendMessage(choice, win32con.BM_GETCHECK, 0, 0) == 1, buttons
+                    capture(window, evidence / "upgrade-choice.png")
                     saw_previous_version = True
-                if "Delete the application data" in buttons:
+                if "Delete the application data" in buttons and not saw_uninstaller:
                     choice = buttons["Delete the application data"]
                     assert win32gui.SendMessage(choice, win32con.BM_GETCHECK, 0, 0) == 0, buttons
+                    capture(window, evidence / "upgrade-keep-data.png")
                     saw_uninstaller = True
                 for label, button in buttons.items():
                     if label.startswith("Run shinytauri-smoke-minimal"):
                         # Launch the app separately under the offline UI driver.
                         win32gui.SendMessage(button, win32con.BM_SETCHECK, 0, 0)
-                primary = win32gui.GetDlgItem(window, win32con.IDOK)
-                if primary not in buttons.values() or not win32gui.IsWindowEnabled(primary):
+                if primary not in buttons.values():
                     continue
                 page = (window, sorted(buttons), control_text(primary))
                 if page != last_page:
@@ -90,4 +110,6 @@ def upgrade(setup, timeout=240):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("setup", type=Path)
-    upgrade(parser.parse_args().setup)
+    parser.add_argument("evidence", type=Path)
+    args = parser.parse_args()
+    upgrade(args.setup, args.evidence)

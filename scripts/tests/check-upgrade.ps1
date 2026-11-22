@@ -18,7 +18,7 @@ foreach ($file in $note, $unmanaged) {
 }
 $setup = Get-Item "$env:RUNNER_TEMP/installers/minimal-upgrade-setup.exe"
 Block-External $setup.FullName
-python "$PSScriptRoot/windows-upgrade.py" $setup.FullName
+python "$PSScriptRoot/windows-upgrade.py" $setup.FullName $Evidence
 $updated = Get-ItemProperty -LiteralPath $key
 if ($updated.DisplayVersion -ne '0.2.0' -or $updated.InstallLocation -ne $old.InstallLocation) {
     throw 'The upgrade did not replace v1 at its registered location'

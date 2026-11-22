@@ -147,7 +147,7 @@ jobs:
         shell: pwsh
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          python -m pip install playwright==1.56.0 psutil==7.1.3 pywin32==312
+          python -m pip install playwright==1.56.0 psutil==7.1.3 pywin32==312 pillow==11.3.0
           $edgeRoot = "${env:ProgramFiles(x86)}/Microsoft/EdgeWebView/Application"
           if (!(Test-Path "$edgeRoot/*/msedgewebview2.exe")) {
             $bootstrap = Join-Path $env:RUNNER_TEMP 'WebView2Setup.exe'
