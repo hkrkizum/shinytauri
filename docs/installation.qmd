@@ -38,6 +38,16 @@ cargo install --locked --path cli
 
 Cargo のインストール先を PATH に加える。リポジトリで作業するのは CLI を導入するときだけでよい。アプリをビルドするときはアプリのディレクトリで CLI を実行する。
 
+## ビルド機の環境を診断する
+
+CLI を導入したら、次のコマンドで必要なツールを確認する。アプリの初期化前にも使える。
+
+```sh
+shinytauri doctor
+```
+
+Linux では Git、Nix、`nix-command` と `flakes` の有効化を調べる。Windows ではビルドに使う x64 MSVC 版の Rust、rig、Tauri CLI、C++ コンパイラー、Windows SDK を調べる。各項目に検出結果が表示され、不足があれば導入手順を示して終了コード 1 を返す。すべてそろっていれば終了コードは 0 である。診断にアプリのビルドやパッケージの復元は不要である。
+
 ## Linux から Windows 向けにビルドする
 
 x86_64 Linux に Git と [Nix](https://nix.dev/install-nix) を用意する。Nix の設定で `nix-command` と `flakes` を有効にする。たとえばユーザーの `~/.config/nix/nix.conf` に次の行を追加する。

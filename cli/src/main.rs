@@ -1,4 +1,5 @@
 mod build;
+mod doctor;
 mod init;
 mod template;
 
@@ -20,6 +21,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Check the build machine and show how to install missing tools.
+    Doctor,
     /// Create shinytauri.toml in an existing Shiny app directory.
     Init {
         #[arg(default_value = ".")]
@@ -74,6 +77,7 @@ fn parse_r_version(value: &str) -> std::result::Result<String, String> {
 
 fn main() -> ExitCode {
     let result = match Cli::parse().command {
+        Commands::Doctor => doctor::run(),
         Commands::Init {
             app,
             id,
