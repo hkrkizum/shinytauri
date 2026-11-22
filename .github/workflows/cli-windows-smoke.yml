@@ -56,6 +56,9 @@ jobs:
           Install-ZipTool 'https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.12.6/cargo-tauri-x86_64-pc-windows-msvc.zip' '39636fa68bc00f13dd610fb57688f292e93742978cc35395f2f1be7c540b88a1' 'cargo-tauri.exe'
       - name: Build the standalone CLI
         run: cargo build --locked --release --manifest-path cli/Cargo.toml
+      - name: Test the CLI on Windows
+        if: runner.os == 'Windows'
+        run: cargo test --manifest-path cli/Cargo.toml --locked
       - name: Build the standalone Rust acceptance driver
         run: cargo build --locked --manifest-path scripts/tests/windows-acceptance/Cargo.toml
       - name: Package the external projects with the standalone CLI

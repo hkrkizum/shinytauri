@@ -179,6 +179,10 @@ impl RProcesses {
         Ok(Self(processes))
     }
 
+    pub(crate) fn contains(&self, pid: u32) -> bool {
+        self.0.iter().any(|(child, _)| *child == pid)
+    }
+
     pub(crate) fn wait_exited(&self, timeout: Duration) -> Result<()> {
         let start = Instant::now();
         for (pid, handle) in &self.0 {
@@ -187,7 +191,7 @@ impl RProcesses {
                     handle.as_raw_handle(),
                     timeout.saturating_sub(start.elapsed())
                 )?,
-                "R process {pid} survived closing the installed app"
+                "R process {pid} did not exit within {timeout:?}"
             );
         }
         Ok(())

@@ -1,11 +1,17 @@
-use crate::{browser::BrowserPage, logs::RunLogs, processes};
+use crate::{
+    browser::BrowserPage,
+    logs::{Outcome, RunLogs},
+    package::MINIMAL_TIMEOUT,
+    processes,
+};
 use anyhow::{Context, Result, ensure};
 use std::{
     env, fs,
     net::{Ipv4Addr, TcpListener},
     path::{Path, PathBuf},
     process::{Child, Command},
-    time::Duration,
+    thread,
+    time::{Duration, Instant},
 };
 
 pub(crate) fn run(kind: &str, exe: &Path, evidence: &Path) -> Result<()> {
@@ -16,28 +22,44 @@ pub(crate) fn run(kind: &str, exe: &Path, evidence: &Path) -> Result<()> {
     let exe = std::path::absolute(exe)?;
     let evidence = std::path::absolute(evidence)?;
     fs::create_dir_all(&evidence).with_context(|| format!("creating {}", evidence.display()))?;
+    let settings = exe
+        .parent()
+        .context("missing installation directory")?
+        .join("offline/startup.json");
+    let settings: serde_json::Value = serde_json::from_slice(
+        &fs::read(&settings).with_context(|| format!("read {}", settings.display()))?,
+    )?;
+    let expected = if kind == "minimal" {
+        MINIMAL_TIMEOUT
+    } else {
+        90
+    };
+    ensure!(
+        settings["startupTimeoutSeconds"] == expected,
+        "wrong installed startup timeout for {kind}: {settings}"
+    );
     if kind == "minimal" {
         let gates = tempfile::tempdir().context("creating the fixture gate directory")?;
-        check(
-            kind,
-            &exe,
-            &evidence,
-            Some(&gates.path().join("success")),
-            false,
-        )?;
-        check(
-            kind,
-            &exe,
-            &evidence,
-            Some(&gates.path().join("failure")),
-            true,
-        )
+        for (name, outcome) in [
+            ("success", Outcome::Ready),
+            ("failure", Outcome::AppError),
+            ("timeout", Outcome::PortTimeout(MINIMAL_TIMEOUT)),
+        ] {
+            check(
+                kind,
+                &exe,
+                &evidence,
+                Some(&gates.path().join(name)),
+                outcome,
+            )?;
+        }
+        Ok(())
     } else {
-        check(kind, &exe, &evidence, None, false)
+        check(kind, &exe, &evidence, None, Outcome::Ready)
     }
 }
 
-fn launch(exe: &Path, evidence: &Path, gate: Option<&Path>) -> Result<(Child, u16)> {
+fn launch(exe: &Path, evidence: &Path, gate: Option<&Path>, delay: u64) -> Result<(Child, u16)> {
     let mut command = Command::new(exe);
     command.current_dir(evidence);
     for (key, _) in env::vars_os() {
@@ -52,6 +74,7 @@ fn launch(exe: &Path, evidence: &Path, gate: Option<&Path>) -> Result<(Child, u1
     let windows = PathBuf::from(env::var_os("SYSTEMROOT").context("missing SYSTEMROOT")?);
     let path = env::join_paths([windows.join("System32"), windows])?;
     command.env("PATH", path);
+    command.env("SHINYTAURI_SMOKE_STARTUP_DELAY", delay.to_string());
     if let Some(gate) = gate {
         command.env("SHINYTAURI_SMOKE_GATE", gate);
     }
@@ -70,8 +93,18 @@ fn launch(exe: &Path, evidence: &Path, gate: Option<&Path>) -> Result<(Child, u1
     ))
 }
 
-fn check(kind: &str, exe: &Path, evidence: &Path, gate: Option<&Path>, failed: bool) -> Result<()> {
-    let run = if failed { "intentional-failure" } else { kind };
+fn check(
+    kind: &str,
+    exe: &Path,
+    evidence: &Path,
+    gate: Option<&Path>,
+    outcome: Outcome,
+) -> Result<()> {
+    let run = match outcome {
+        Outcome::Ready => kind,
+        Outcome::AppError => "intentional-failure",
+        Outcome::PortTimeout(_) => "startup-timeout",
+    };
     let identifier = if kind == "rhino" {
         "org.example.rhino"
     } else {
@@ -79,36 +112,83 @@ fn check(kind: &str, exe: &Path, evidence: &Path, gate: Option<&Path>, failed: b
     };
     let local = PathBuf::from(env::var_os("LOCALAPPDATA").context("missing LOCALAPPDATA")?);
     let logs = RunLogs::before_launch(local.join(identifier).join("logs"))?;
-    let (mut host, port) = launch(exe, evidence, gate)?;
+    // The update omits the setting. Its app deliberately takes longer than
+    // the old product's custom limit while remaining within the 90 s default.
+    let delay = if kind == "upgrade" {
+        MINIMAL_TIMEOUT + 2
+    } else {
+        0
+    };
+    let (mut host, port) = launch(exe, evidence, gate, delay)?;
     let pid = host.id();
     let result = BrowserPage::attach(port, &mut host).and_then(|page| {
         let mut runtimes = None;
         let checks = (|| -> Result<()> {
+            let bundled_r = exe
+                .parent()
+                .context("missing installation directory")?
+                .join("offline/R");
             if let Some(gate) = gate {
-                page.startup(failed, evidence)?;
+                page.startup(outcome != Outcome::Ready, evidence)?;
+                let action = match outcome {
+                    Outcome::Ready => "start",
+                    Outcome::AppError => "fail",
+                    Outcome::PortTimeout(_) => "timeout",
+                };
                 // R must never observe an empty or partially written gate.
                 let pending = gate.with_extension("tmp");
-                fs::write(&pending, if failed { "fail" } else { "start" })?;
+                fs::write(&pending, action)?;
                 fs::rename(pending, gate).context("releasing the R startup gate")?;
+                if let Outcome::PortTimeout(seconds) = outcome {
+                    let worker = gate.with_extension("worker-ready");
+                    let limit = Instant::now() + Duration::from_secs(seconds);
+                    while !worker.try_exists()? {
+                        ensure!(
+                            Instant::now() < limit,
+                            "timeout fixture's R worker did not start"
+                        );
+                        thread::sleep(Duration::from_millis(100));
+                    }
+                    // Capture both Rterm and its sleeping Rscript child before expiry.
+                    let children = processes::RProcesses::capture(pid, &bundled_r, 2)?;
+                    let worker_pid = fs::read_to_string(worker)?.trim().parse()?;
+                    ensure!(
+                        children.contains(worker_pid),
+                        "bundled worker {worker_pid} not captured"
+                    );
+                    runtimes = Some(children);
+                }
             }
-            if failed {
-                page.failed(evidence)?;
-            } else {
+            if outcome == Outcome::Ready {
                 page.exercise(kind, evidence)?;
-            }
-            let (host_name, r_name) = logs.check(pid, failed)?;
-            if failed {
-                page.check_log_links(&host_name, &r_name)?;
-            } else {
                 let minimum = if kind == "rhino" { 2 } else { 1 };
-                let bundled_r = exe
-                    .parent()
-                    .context("missing installation directory")?
-                    .join("offline/R");
                 runtimes = Some(processes::RProcesses::capture(pid, &bundled_r, minimum)?);
+            } else {
+                let timeout = match outcome {
+                    Outcome::PortTimeout(seconds) => Some(seconds),
+                    _ => None,
+                };
+                page.failed(&evidence.join(format!("{run}.png")), timeout)?;
+            }
+            let (host_name, r_name, elapsed_ms) = logs.check(pid, outcome)?;
+            ensure!(
+                elapsed_ms >= delay * 1000,
+                "configured fixture delay of {delay} s was skipped: {elapsed_ms} ms"
+            );
+            if outcome != Outcome::Ready {
+                page.check_log_links(&host_name, &r_name)?;
+            }
+            // The failed window stays usable; its R job must already have exited.
+            if matches!(outcome, Outcome::PortTimeout(_)) {
+                runtimes
+                    .as_ref()
+                    .context("missing captured R job")?
+                    .wait_exited(Duration::from_secs(5))?;
             }
             processes::close_main_window(&mut host)?;
-            if let Some(children) = &runtimes {
+            if outcome == Outcome::Ready
+                && let Some(children) = &runtimes
+            {
                 children.wait_exited(Duration::from_secs(10))?;
             }
             Ok(())

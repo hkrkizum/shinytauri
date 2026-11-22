@@ -1,4 +1,5 @@
 library(shiny)
+Sys.sleep(as.numeric(Sys.getenv("SHINYTAURI_SMOKE_STARTUP_DELAY", "0")))
 
 saved_note <- file.path(
   Sys.getenv("LOCALAPPDATA"),

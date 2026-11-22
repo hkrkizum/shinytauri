@@ -8,6 +8,8 @@ use std::{
     process::Command,
 };
 
+pub(crate) const MINIMAL_TIMEOUT: u64 = 20;
+
 #[derive(Clone, Copy, ValueEnum)]
 pub(crate) enum Fixture {
     Minimal,
@@ -102,6 +104,38 @@ pub(crate) fn run(fixture: Fixture, cli: &Path, repo: &Path, temp: &Path) -> Res
             };
             init(&app)?;
             invoke(cli, &caller, &["lock".as_ref(), app.as_os_str()])?;
+            let config = app.join("shinytauri.toml");
+            let mut settings: toml::Table = fs::read_to_string(&config)?.parse()?;
+            let files = settings
+                .get_mut("files")
+                .and_then(toml::Value::as_array_mut)
+                .context("missing init files")?;
+            let helper = "counter-helper.r";
+            ensure!(
+                !files.contains(&helper.into()),
+                "init silently selected {helper}"
+            );
+            let inspect = Command::new(cli)
+                .current_dir(&caller)
+                .arg("inspect")
+                .arg(&app)
+                .output()?;
+            let diagnostic = format!(
+                "{}{}",
+                String::from_utf8_lossy(&inspect.stdout),
+                String::from_utf8_lossy(&inspect.stderr)
+            );
+            ensure!(
+                !inspect.status.success() && diagnostic.contains(helper),
+                "inspect did not identify missing {helper}: {diagnostic}"
+            );
+            files.push(helper.into());
+            settings.insert(
+                "startupTimeoutSeconds".into(),
+                (MINIMAL_TIMEOUT as i64).into(),
+            );
+            fs::write(config, toml::to_string(&settings)?)?;
+            invoke(cli, &caller, &["inspect".as_ref(), app.as_os_str()])?;
             invoke(cli, &caller, &["build".as_ref(), app.as_os_str()])?;
             collect_setup(&app, &temp.join("minimal-setup.exe"))?;
 
