@@ -13,6 +13,8 @@ shinytauri は R の Shiny アプリを Windows x64 用のインストーラー�
 | Linux x86_64 | Git、flakes と `nix-command` を有効にした Nix |
 | Windows x64 | Visual Studio Build Tools の C++ ツールと Windows SDK、Rust の MSVC ツールチェーン、rig、Tauri CLI |
 
+CLI を導入したら `shinytauri doctor` でビルド機のツールを確認する。不足があれば、診断結果に導入手順が表示される。
+
 ビルドにはインターネット接続が必要である。配布先は WebView2 Runtime を導入した Windows 10/11 x64 で、R を別途インストールする必要はない。[OS 別の導入手順](docs/installation.qmd)
 
 ## 最初のビルド
@@ -22,10 +24,11 @@ shinytauri は R の Shiny アプリを Windows x64 用のインストーラー�
 ```sh
 cd sales-dashboard
 shinytauri init . --id jp.example.sales-dashboard
+shinytauri inspect .
 shinytauri build .
 ```
 
-`dist/` にできた `*-setup.exe` が配布物である。画面や計算処理を変更したら、同じディレクトリで `shinytauri build .` を実行する。配布ファイルを追加したときは `shinytauri.toml` の `files` も更新する。
+`inspect` は配布するファイルと、同梱する R のバージョンやパッケージ数を表示する。新しい画像や CSS を追加したら、配布対象に含まれるか確認し、必要に応じて `shinytauri.toml` の `files` を更新する。`build` が `dist/` に作成した `*-setup.exe` を利用者に渡す。アプリの変更を配布するときは再度ビルドする。
 
 `DT` などを使う場合は `--package` で依存を宣言する。`renv.lock` や `DESCRIPTION` を使っている場合は、それらをもとに `shinytauri lock .` で Windows 用ロックを作成できる。既存の rig プロジェクトは Windows 用の `rproj.lock` を再利用できる。[アプリの依存パッケージ](docs/dependencies.qmd)
 
