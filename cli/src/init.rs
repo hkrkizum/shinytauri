@@ -1,5 +1,5 @@
 use crate::Result;
-use std::{collections::BTreeMap, fs, io::Write, path::Path};
+use std::{fs, io::Write, path::Path};
 use toml::{Table, Value};
 
 const PROFILE: &str = "shinytauri.toml";
@@ -32,38 +32,6 @@ fn check_identifier(id: &str) -> Result<()> {
 pub(crate) struct Resources {
     pub(crate) files: Vec<String>,
     pub(crate) empty_dirs: Vec<String>,
-}
-
-pub(crate) fn check_entry_names<'a>(paths: impl IntoIterator<Item = &'a str>) -> Result<()> {
-    let mut seen = BTreeMap::new();
-    let mut check = |name: &'a str| -> Result<()> {
-        if let Some(first) = seen.insert(name.to_ascii_lowercase(), name)
-            && first != name
-        {
-            return Err(format!(
-                "Shiny entry names '{first}' and '{name}' collide on Windows. Keep one spelling."
-            )
-            .into());
-        }
-        Ok(())
-    };
-    for path in paths {
-        let mut parts = path.split('/');
-        let root = parts.next().unwrap();
-        match root.to_ascii_lowercase().as_str() {
-            "app.r" | "ui.r" | "server.r" | "global.r" => check(root)?,
-            "www" => {
-                check(root)?;
-                if let Some(child) = parts.next()
-                    && child.eq_ignore_ascii_case("index.html")
-                {
-                    check(&path[..root.len() + 1 + child.len()])?;
-                }
-            }
-            _ => {}
-        }
-    }
-    Ok(())
 }
 
 fn collect_tree(app: &Path, folder: &str, resources: &mut Resources) -> Result<()> {
@@ -205,7 +173,7 @@ pub(crate) fn initialize(
         return Err(format!("{} already exists.", config.display()).into());
     }
     let resources = resources(&app)?;
-    check_entry_names(
+    crate::windows_names::check(
         resources
             .files
             .iter()

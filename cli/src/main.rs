@@ -3,6 +3,7 @@ mod doctor;
 mod init;
 mod inspect;
 mod template;
+mod windows_names;
 
 use clap::{Parser, Subcommand};
 use std::{error::Error, path::PathBuf, process::ExitCode};

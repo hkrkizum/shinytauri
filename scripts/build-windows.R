@@ -591,7 +591,13 @@ within_path <- function(path, directory) {
   path == directory || startsWith(path, paste0(directory, "/"))
 }
 
-copy_resource <- function(source, destination, directory_only = FALSE) {
+copy_resource <- function(
+  source,
+  destination,
+  relative,
+  check_names,
+  directory_only = FALSE
+) {
   link <- Sys.readlink(source)
   resolved <- absolute_path(source)
   if (
@@ -617,10 +623,15 @@ copy_resource <- function(source, destination, directory_only = FALSE) {
       stop("Unreadable app directory: ", source)
     }
     children <- list.files(source, all.files = TRUE, no.. = TRUE)
-    for (child in children) {
+    child_paths <- if (length(children)) paste(relative, children, sep = "/")
+    check_names(child_paths)
+    for (i in seq_along(children)) {
+      child <- children[[i]]
       copy_resource(
         file.path(source, child),
-        file.path(destination, child)
+        file.path(destination, child),
+        child_paths[[i]],
+        check_names
       )
     }
   } else {
@@ -631,34 +642,83 @@ copy_resource <- function(source, destination, directory_only = FALSE) {
   }
 }
 
-# Files from a case-sensitive checkout must remain distinguishable on Windows.
-check_entry_names <- function(paths) {
-  names <- unique(c(sub("/.*", "", paths), paths))
-  folded <- chartr(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    "abcdefghijklmnopqrstuvwxyz",
-    names
+# The Rust preflight and R build share a locale-independent case table. Record
+# parent directory spellings too: Images/a and images/b collide at the parent.
+windows_resource_names <- function(case_table) {
+  rows <- utils::read.table(
+    case_table,
+    col.names = c("first", "last", "step", "delta")
   )
-  entries <- folded %in%
-    c("app.r", "server.r", "ui.r", "global.r", "www", "www/index.html")
-  names <- names[entries]
-  folded <- folded[entries]
-  clash <- anyDuplicated(folded)
-  if (clash > 0L) {
-    key <- folded[[clash]]
-    stop(
-      "Shiny entry names collide on Windows: ",
-      paste(names[folded == key], collapse = ", ")
-    )
+  upper <- 0:65535
+  for (i in seq_len(nrow(rows))) {
+    codes <- seq.int(rows$first[i], rows$last[i], by = rows$step[i])
+    upper[codes + 1L] <- codes + rows$delta[i]
+  }
+  root <- new.env(parent = emptyenv())
+  function(paths) {
+    for (path in paths) {
+      directory <- root
+      spelling <- ""
+      for (part in strsplit(enc2utf8(path), "/", fixed = TRUE)[[1L]]) {
+        points <- utf8ToInt(part)
+        bmp <- points <= 65535L
+        points[bmp] <- upper[points[bmp] + 1L]
+        folded <- intToUtf8(points)
+        spelling <- if (nzchar(spelling)) {
+          paste(spelling, part, sep = "/")
+        } else {
+          part
+        }
+        stem <- sub(" +$", "", sub("[.].*$", "", folded))
+        if (
+          !length(points) ||
+            any(points <= 31L) ||
+            length(points) + sum(!bmp) > 255L ||
+            grepl('[<>:"\\\\|?*]|[. ]$', part, perl = TRUE) ||
+            folded %in% c("CONIN$", "CONOUT$") ||
+            stem %in% c("CON", "PRN", "AUX", "NUL") ||
+            grepl("^(COM|LPT)[1-9\u00b9\u00b2\u00b3]$", stem, perl = TRUE)
+        ) {
+          stop(
+            "Invalid Windows app resource name: ",
+            encodeString(spelling, quote = '"')
+          )
+        }
+        # R environment keys use the native code page. Numeric UTF-16/BMP
+        # mappings keep different Unicode names distinct even in the C locale.
+        key <- paste(points, collapse = ",")
+        child <- directory[[key]]
+        if (is.null(child)) {
+          child <- new.env(parent = emptyenv())
+          attr(child, "spelling") <- spelling
+          directory[[key]] <- child
+        } else if (attr(child, "spelling") != spelling) {
+          stop(
+            "App resource paths ",
+            encodeString(attr(child, "spelling"), quote = '"'),
+            " and ",
+            encodeString(spelling, quote = '"'),
+            " collide on Windows. Keep one spelling."
+          )
+        }
+        directory <- child
+      }
+    }
   }
 }
 
-stage_app <- function(spec, dest, output = NULL) {
+stage_app <- function(
+  spec,
+  dest,
+  output = NULL,
+  case_table = "scripts/windows-name-case.txt"
+) {
   stopifnot(dir.create(dest, recursive = TRUE))
   dest <- absolute_path(dest)
   app <- absolute_path(spec$app)
   selected <- unique(c(spec$files, spec$emptyDirs))
-  check_entry_names(selected)
+  check_names <- windows_resource_names(case_table)
+  check_names(selected)
   for (relative in selected) {
     source <- file.path(app, relative)
     resolved <- absolute_path(source)
@@ -674,19 +734,11 @@ stage_app <- function(spec, dest, output = NULL) {
     copy_resource(
       source,
       file.path(dest, relative),
+      relative,
+      check_names,
       directory_only = !relative %in% spec$files
     )
   }
-  # A directory selected as a whole may add entries absent from the manifest.
-  root_names <- list.files(dest)
-  www <- root_names[tolower(root_names) == "www"]
-  for (folder in www) {
-    children <- list.files(file.path(dest, folder))
-    if (length(children)) {
-      root_names <- c(root_names, file.path(folder, children))
-    }
-  }
-  check_entry_names(root_names)
   # NSIS installs files. An empty staged leaf needs a file to carry its path.
   for (directory in list.dirs(dest)) {
     if (!length(list.files(directory, all.files = TRUE, no.. = TRUE))) {
@@ -834,7 +886,12 @@ build_windows <- function(profile, output = NULL, engine = getwd()) {
   on.exit(unlink(stage, recursive = TRUE), add = TRUE)
   bundle <- prepare_source_bundle(spec, profile, stage, output, cache)
   payload <- file.path(stage, "payload")
-  stage_app(spec, file.path(payload, "app"), output)
+  stage_app(
+    spec,
+    file.path(payload, "app"),
+    output,
+    file.path(engine, "scripts/windows-name-case.txt")
+  )
   if (isTRUE(spec$checkMinimal)) {
     check_minimal_imports(file.path(payload, "app"), target)
   }

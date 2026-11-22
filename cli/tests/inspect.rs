@@ -295,3 +295,71 @@ fn reports_source_bundles_relative_to_the_config_before_building() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("sourceBundle"));
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn checks_all_selected_windows_paths_and_ancestors() {
+    let root = tempdir().unwrap();
+    let app = root.path();
+    for name in ["www/Chart", "www/chart", "www/chart.", "www/empty"] {
+        fs::create_dir_all(app.join(name)).unwrap();
+    }
+    for name in [
+        "app.R",
+        "www/Chart/é.svg",
+        "www/Chart/É.svg",
+        "www/chart/other",
+        "www/EMPTY",
+        "www/straße.txt",
+        "www/strasse.txt",
+        "www/é",
+        "www/e\u{301}",
+    ] {
+        fs::write(app.join(name), "").unwrap();
+    }
+    fs::write(app.join("rproj.lock"), LOCK).unwrap();
+    let check = |files: &str, extra: &str| {
+        fs::write(
+            app.join("shinytauri.toml"),
+            format!("app='.'\nlock='rproj.lock'\nfiles={files}\n{extra}"),
+        )
+        .unwrap();
+        inspect(app, &[])
+    };
+    for (files, extra, first, second) in [
+        (
+            "['app.R','www/Chart']",
+            "",
+            "www/Chart/é.svg",
+            "www/Chart/É.svg",
+        ),
+        (
+            "['app.R','www/Chart/é.svg','www/chart/other']",
+            "",
+            "www/Chart",
+            "www/chart",
+        ),
+        (
+            "['app.R','www/EMPTY']",
+            "emptyDirs=['www/empty']",
+            "www/EMPTY",
+            "www/empty",
+        ),
+    ] {
+        let result = check(files, extra);
+        let message = String::from_utf8_lossy(&result.stderr);
+        assert!(
+            !result.status.success() && message.contains(first) && message.contains(second),
+            "{result:?}"
+        );
+    }
+    let invalid = check("['app.R','www/chart.']", "");
+    assert!(
+        !invalid.status.success() && String::from_utf8_lossy(&invalid.stderr).contains("Windows")
+    );
+    let result = check(
+        "['app.R','www/straße.txt','www/strasse.txt','www/é','www/e\u{301}','www/Chart/é.svg']",
+        "emptyDirs=['www/Chart']",
+    );
+    assert!(result.status.success(), "{result:?}");
+}

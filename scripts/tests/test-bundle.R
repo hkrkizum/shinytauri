@@ -121,10 +121,13 @@ check_empty_directories <- function() {
   writeLines("source only", file.path(static, ".secret"))
   old <- setwd(tempdir())
   on.exit(setwd(old), add = TRUE, after = FALSE)
+  stage <- function(...) {
+    stage_app(..., case_table = file.path(old, "scripts/windows-name-case.txt"))
+  }
   spec <- read_bundle(profile)
   check_stage <- function(name) {
     dest <- file.path(root, name)
-    stage_app(spec, dest)
+    stage(spec, dest)
     for (dir in c("assets/static", "legacy/nested")) {
       staged <- file.path(dest, dir)
       stopifnot(
@@ -143,7 +146,7 @@ check_empty_directories <- function() {
   writeLines("explicit contents", file.path(static, ".gitkeep"))
   spec$files <- c("app.R", "assets/static/.gitkeep")
   dest <- file.path(root, "chosen")
-  stage_app(spec, dest)
+  stage(spec, dest)
   stopifnot(identical(
     readLines(file.path(dest, "assets/static/.gitkeep")),
     "explicit contents"
@@ -151,20 +154,20 @@ check_empty_directories <- function() {
   # Selecting a parent directory in files still opts in to its complete contents.
   spec$files <- c("app.R", "assets")
   dest <- file.path(root, "recursive")
-  stage_app(spec, dest)
+  stage(spec, dest)
   stopifnot(identical(
     readLines(file.path(dest, "assets/static/new.txt")),
     "later addition"
   ))
   spec$files <- "app.R"
   expect_bundle_error(
-    stage_app(spec, file.path(root, "collision"), file.path(static, "dist")),
+    stage(spec, file.path(root, "collision"), file.path(static, "dist")),
     "output directory"
   )
   for (bad in c("missing", "app.R")) {
     spec$emptyDirs <- bad
     expect_bundle_error(
-      stage_app(spec, file.path(root, paste0("bad-", bad))),
+      stage(spec, file.path(root, paste0("bad-", bad))),
       "directory"
     )
   }
@@ -173,7 +176,7 @@ check_empty_directories <- function() {
   if (.Platform$OS.type != "windows") {
     stopifnot(file.symlink(static, file.path(app, "shortcut")))
     spec$emptyDirs <- "shortcut"
-    expect_bundle_error(stage_app(spec, file.path(root, "symlink")), "link")
+    expect_bundle_error(stage(spec, file.path(root, "symlink")), "link")
   }
 }
 
@@ -195,6 +198,7 @@ check_external_build <- function() {
     dir.create(file.path(engine, "scripts")),
     dir.create(file.path(engine, "notices")),
     file.copy("scripts/distribution-sources.R", file.path(engine, "scripts")),
+    file.copy("scripts/windows-name-case.txt", file.path(engine, "scripts")),
     dir.create(project),
     file.copy("src-tauri/tauri.conf.json", file.path(engine, "src-tauri")),
     file.copy("LICENSE", engine),
@@ -511,6 +515,60 @@ check_entrypoint_collisions <- function() {
   }
 }
 check_entrypoint_collisions()
+
+
+check_windows_resource_names <- function() {
+  root <- tempfile()
+  app <- file.path(root, "app")
+  stopifnot(dir.create(file.path(app, "www"), recursive = TRUE))
+  on.exit(unlink(root, recursive = TRUE))
+  file.create(file.path(app, "app.R"))
+  run <- function(files, dirs = NULL) {
+    stage_app(
+      list(app = app, files = c("app.R", files), emptyDirs = dirs),
+      tempfile(tmpdir = root)
+    )
+  }
+  collision <- function(expr, first, second) {
+    err <- tryCatch(
+      {
+        force(expr)
+        NULL
+      },
+      error = identity
+    )
+    stopifnot(
+      inherits(err, "error"),
+      all(vapply(
+        c(first, second),
+        function(s) grepl(s, conditionMessage(err), fixed = TRUE),
+        FALSE
+      ))
+    )
+  }
+  collision(run(c("www/Images/a", "www/images/b")), "www/Images", "www/images")
+  collision(run("www/Sales", "www/sales"), "www/Sales", "www/sales")
+  for (path in c(
+    "www/NUL.csv",
+    "www/CONOUT$",
+    "www/COM¹.dat",
+    "www/com1 .txt",
+    "www/pic?.svg",
+    "www/name."
+  )) {
+    expect_bundle_error(run(path), "Windows")
+  }
+  if (.Platform$OS.type == "unix") {
+    stopifnot(file.create(file.path(app, "www", c("É.svg", "é.svg"))))
+    collision(run("www"), "www/É.svg", "www/é.svg")
+    file.remove(file.path(app, "www/é.svg"))
+    for (name in c("straße", "strasse", "é", "e\u0301")) {
+      file.create(file.path(app, "www", name))
+    }
+    run("www")
+  }
+}
+check_windows_resource_names()
 
 check_cli_entry <- function() {
   root <- tempfile("engine path with spaces ")
