@@ -124,12 +124,21 @@ impl BrowserPage {
         self.until(&format!("{selector} to show {expected:?}"), timeout, &expr)
     }
 
-    fn visible(&self, selector: &str, timeout: Duration) -> Result<()> {
+    fn visible(&self, selector: &str, text: Option<&str>, timeout: Duration) -> Result<()> {
         let expr = format!(
-            "document.querySelector({})?.checkVisibility({{visibilityProperty:true}}) === true",
-            json!(selector)
+            r#"[...document.querySelectorAll({selector})].some(el => {{
+                const box = el.getBoundingClientRect();
+                return box.width > 0 && box.height > 0 && el.checkVisibility({{visibilityProperty:true}})
+                    && ({text} === null || el.innerText.trim() === {text});
+            }})"#,
+            selector = json!(selector),
+            text = json!(text)
         );
-        self.until(&format!("{selector} to be visible"), timeout, &expr)
+        self.until(
+            &format!("{selector} to be visible ({text:?})"),
+            timeout,
+            &expr,
+        )
     }
 
     fn click(&self, selector: &str, timeout: Duration) -> Result<()> {
@@ -157,8 +166,8 @@ impl BrowserPage {
     }
 
     pub fn startup(&self, failed: bool, evidence: &Path) -> Result<()> {
-        self.visible("[data-stage='load']", STARTUP)?;
-        self.visible("#startup-events [data-event='r']", NORMAL)?;
+        self.visible("[data-stage='load']", None, STARTUP)?;
+        self.visible("#startup-events [data-event='r']", None, NORMAL)?;
         self.until(
             "Shiny startup stage",
             NORMAL,
@@ -178,8 +187,8 @@ impl BrowserPage {
     }
 
     pub fn failed(&self, evidence: &Path) -> Result<()> {
-        self.visible("[data-stage='failed']", STARTUP)?;
-        self.visible("#startup-error", NORMAL)?;
+        self.visible("[data-stage='failed']", None, STARTUP)?;
+        self.visible("#startup-error", None, NORMAL)?;
         ensure!(
             self.value("location.hostname !== '127.0.0.1'")? == true,
             "Failure redirected to the Shiny server"
@@ -226,8 +235,11 @@ impl BrowserPage {
                 );
             }
             "upgrade" => {
-                self.until("visible upgraded heading", NORMAL,
-                    "[...document.querySelectorAll('h1,h2,h3,h4,h5,h6,[role=heading]')].some(h => h.checkVisibility({visibilityProperty:true}) && h.innerText.trim()==='Updated counter 0.2.0')")?;
+                self.visible(
+                    "h1,h2,h3,h4,h5,h6,[role=heading]",
+                    Some("Updated counter 0.2.0"),
+                    NORMAL,
+                )?;
                 self.text("#saved", "saved with version 0.1.0", NORMAL)?;
                 self.text("#total", "Updated count: 0", NORMAL)?;
                 self.click("#count", NORMAL)?;
@@ -240,7 +252,7 @@ impl BrowserPage {
                 self.click("#app-dice-roll", NORMAL)?;
                 self.click("nav a[href$='#!/report']", NORMAL)?;
                 self.click("#app-report-render", STARTUP)?;
-                self.visible("#app-report-download", REPORT)?;
+                self.visible("#app-report-download", None, REPORT)?;
                 self.until("rendered report download URL", REPORT,
                     "document.querySelector('#app-report-download')?.getAttribute('href')?.includes('/download/')")?;
                 self.check_report()?;
@@ -374,6 +386,18 @@ mod tests {
                 "location.href === 'about:blank'",
             )?;
             page.value(r#"document.body.innerHTML = "<main data-stage='failed'><p id='startup-error'>Startup failed</p><p id='host-log'>C:/logs/host-21.jsonl</p><p id='r-log'>C:/logs/shiny-21.log</p></main>""#)?;
+            page.value(r#"document.body.insertAdjacentHTML('beforeend', '<h2 style="height:0;overflow:hidden">Updated counter 0.2.0</h2>'); document.querySelector('#startup-error').style.cssText='width:0;overflow:hidden'"#)?;
+            for (selector, text) in [
+                ("#startup-error", None),
+                ("h2", Some("Updated counter 0.2.0")),
+            ] {
+                ensure!(
+                    page.visible(selector, text, Duration::from_millis(250))
+                        .is_err(),
+                    "{selector} has an empty bounding box"
+                );
+            }
+            page.value("document.querySelector('#startup-error').removeAttribute('style'); true")?;
             page.failed(tmp.path())?;
             page.check_log_links("host-21.jsonl", "shiny-21.log")?;
             page.value(&format!(
