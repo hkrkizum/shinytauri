@@ -1,0 +1,38 @@
+[package]
+edition = "2024"
+name    = "shinytauri-acceptance"
+publish = false
+version = "0.1.0"
+
+[dependencies]
+anyhow = "1"
+clap   = { features = ["derive"], version = "4" }
+toml   = "1"
+
+[target.'cfg(windows)'.dependencies]
+headless_chrome = "=1.0.22"
+png = "0.18"
+same-file = "1"
+serde_json = "1"
+tempfile = "3"
+ureq = { default-features = false, version = "3" }
+windows-sys = { features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Threading",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_WindowsAndMessaging",
+], version = "0.61" }
+winreg = "0.56"
+
+[dev-dependencies]
+headless_chrome = "=1.0.22"
+serde_json      = "1"
+tempfile        = "3"
+ureq            = { default-features = false, version = "3" }
+
+[profile.dev]
+debug = 0

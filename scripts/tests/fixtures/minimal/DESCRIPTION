@@ -1,0 +1,3 @@
+Package: counter
+Version: 1.0.0
+Imports: shiny, stringr (== 1.6.0)

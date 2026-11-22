@@ -63,6 +63,7 @@ Windows ネイティブ開発では[ビルドツール](installation.qmd)に加�
 | --- | --- |
 | `mise run QA` | フォーマットと lint。`format`、`lint` で個別実行、`QA-fix` で自動修正して再検査できる。 |
 | `mise run test:cli` | CLI の引数と初期化、作業場所の分離、同梱ホスト |
+| `mise run test:acceptance` | Windows 受け入れ試験に使う Rust コードの単体テスト |
 | `mise run test:bundle` | 配布ファイル、Windows 用ロック、パッケージ、成果物の生成 |
 | `mise run test` | CLI と配布構成、Rhino 単体テスト、shinytest2 のブラウザーテスト、Tauri の nextest |
 | `mise run test-full` | `SHINYTAURI_HEAVY_TESTS=1` で 10 万回のサイコロ集計など重いケースも実行 |
@@ -71,6 +72,16 @@ Windows ネイティブ開発では[ビルドツール](installation.qmd)に加�
 デモの R テストは `src-shiny/tests/testthat/` に置く。`test-shinytest2*.R` は Chromium で操作とレポート内容を確認するテストで、それ以外は `test:testthat` の対象になる。Rust の重いテストは `#[ignore]`、R は `SHINYTAURI_HEAVY_TESTS` で実行条件を指定する。
 
 `setup` はクローンに `core.hooksPath=.githooks` と `merge.ff=false` を設定する。`mise run setup:check` は設定値とフックの実行権限を検査する。作業ブランチへのコミットでは `QA`、マージと競合解消後のマージコミットでは `QA-full` が動く。`main` への直接のコミットと amend はフックで拒否する。
+
+## Windows インストーラーの受け入れ試験
+
+試験用の Rust クレートは `scripts/tests/windows-acceptance/` にある。GitHub Actions の `Windows CLI acceptance` は、ビルドした CLI で最小アプリの新旧2版と Rhino アプリをパッケージ化し、Windows にインストールする。外部通信を遮断し、インストール済みアプリの WebView2 に接続して、起動時の表示、ボタン操作、レポートのダウンロード、終了後の R プロセスを確認する。更新試験では旧版のファイルが消え、利用者の保存データが新版で読めることを確かめる。実行ログと画面画像は Actions の `windows-acceptance-evidence` から取得できる。
+
+ブラウザーの操作を手元で検証するには、Nix 開発シェルで次のコマンドを実行する。このテストは Chromium に接続し、ボタンをクリックできるまでの待機、画面の変化、画像の保存を確認する。
+
+```sh
+CHROME=chromium cargo test --locked --manifest-path scripts/tests/windows-acceptance/Cargo.toml browser::tests::existing_chromium_page -- --ignored
+```
 
 ## マニュアルを確認する
 
