@@ -55,15 +55,17 @@ jobs:
           Install-ZipTool 'https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.12.6/cargo-tauri-x86_64-pc-windows-msvc.zip' '39636fa68bc00f13dd610fb57688f292e93742978cc35395f2f1be7c540b88a1' 'cargo-tauri.exe'
       - name: Build the standalone CLI
         run: cargo build --locked --release --manifest-path cli/Cargo.toml
+      - name: Build the standalone Rust acceptance driver
+        run: cargo build --locked --manifest-path scripts/tests/windows-acceptance/Cargo.toml
       - name: Package the external projects with the standalone CLI
         shell: pwsh
         env:
           FIXTURE: ${{ matrix.app }}
           RIG_MODE: user
         run: |
-          $cli = if ($IsWindows) { 'shinytauri.exe' } else { 'shinytauri' }
-          cargo run --locked --manifest-path scripts/tests/windows-acceptance/Cargo.toml -- package `
-            $env:FIXTURE "cli/target/release/$cli" $env:GITHUB_WORKSPACE $env:RUNNER_TEMP
+          $suffix = if ($IsWindows) { '.exe' } else { '' }
+          & "./scripts/tests/windows-acceptance/target/debug/shinytauri-acceptance$suffix" package `
+            $env:FIXTURE "cli/target/release/shinytauri$suffix" $env:GITHUB_WORKSPACE $env:RUNNER_TEMP
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer-${{ matrix.app }}
@@ -85,7 +87,11 @@ jobs:
           path: ${{ runner.temp }}/installers
           merge-multiple: true
       - name: Test the Rust acceptance driver
-        run: cargo test --locked --manifest-path scripts/tests/windows-acceptance/Cargo.toml
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          cargo test --locked --manifest-path scripts/tests/windows-acceptance/Cargo.toml
+          cargo build --locked --manifest-path scripts/tests/windows-acceptance/Cargo.toml
       - name: Prepare the WebView2 runtime
         shell: pwsh
         run: |
@@ -98,7 +104,7 @@ jobs:
             if ($install.ExitCode) { throw "WebView2 installation failed: $($install.ExitCode)" }
           }
       - name: Install both products, exercise their windows, and close them
-        run: cargo run --locked --manifest-path scripts/tests/windows-acceptance/Cargo.toml -- installed-apps
+        run: ./scripts/tests/windows-acceptance/target/debug/shinytauri-acceptance.exe installed-apps
       - uses: actions/upload-artifact@v4
         if: always()
         with:

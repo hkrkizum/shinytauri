@@ -146,6 +146,8 @@ impl BrowserPage {
             r#"(() => {{
             const el = document.querySelector({});
             if (!el?.checkVisibility({{visibilityProperty:true}}) || el.matches(':disabled')) return false;
+            const aria = el.closest('[aria-disabled="true" i], [aria-disabled="false" i]');
+            if (aria?.getAttribute('aria-disabled').toLowerCase() === 'true') return false;
             el.scrollIntoView({{block:'center', inline:'nearest', behavior:'instant'}});
             const b = el.getBoundingClientRect();
             return b.width > 0 && b.height > 0 && el.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2));
@@ -370,6 +372,17 @@ mod tests {
         let test = (|| -> Result<()> {
             let page = BrowserPage::attach(port, &mut child)?;
             page.startup(false, tmp.path())?;
+            page.until(
+                "fixture overlay removed",
+                NORMAL,
+                "!document.getElementById('overlay')",
+            )?;
+            page.value("document.body.setAttribute('aria-disabled', 'true'); true")?;
+            ensure!(
+                page.click("#count", Duration::from_millis(250)).is_err(),
+                "Clicked a button in a disabled group"
+            );
+            page.value("document.body.removeAttribute('aria-disabled'); true")?;
             page.exercise("minimal", tmp.path())?;
             ensure!(fs::read(tmp.path().join("minimal.png"))?.starts_with(b"\x89PNG\r\n\x1a\n"));
             let err = page
