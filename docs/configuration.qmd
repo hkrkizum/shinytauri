@@ -25,6 +25,8 @@ title = "カウンター"
 quarto = false
 ```
 
+::: {.table-responsive}
+
 | 項目 | 意味 |
 | --- | --- |
 | `app` | Shiny のアプリディレクトリ。設定ファイルを基準に相対パスで指定する。 |
@@ -43,7 +45,10 @@ quarto = false
 | `icon` | アプリとインストーラーに使う Windows アイコン（`.ico`）。 |
 | `licenseFile` | インストーラーの同意画面に表示する UTF-8 のテキストファイル。 |
 | `sourceBundle` | インストーラーと一緒に配布する対応ソースのアーカイブまたは専用ディレクトリ。設定ファイルからの相対パスで指定できる。[対応ソースの準備](distribution.qmd#redistribution) |
+| `startupTimeoutSeconds` | R の起動準備から Shiny の最初の HTTP 応答まで待つ秒数。正の整数で指定する。既定値は 90。[起動に時間がかかるアプリ](#startup-timeout) |
 | `quarto` | `true` なら Windows 用 Quarto CLI を同梱する。既定値は `false`。 |
+
+:::
 
 同じ PC に複数のアプリを入れる場合は、製品ごとに `productName` と `identifier` の両方を変える。同じ製品を更新するときは両方を保ち、`version` を上げる。
 
@@ -59,7 +64,7 @@ licenseFile = "branding/利用規約.txt"
 
 `publisher` を省くと、通常は `identifier` の 2 番目の要素が発行元になる。たとえば `jp.example.counter` の発行元は `example` になる。Windows インストーラーは発行元と製品名を使ってインストール先を記録する。配布済みの製品を更新するときは、これまでの発行元を使う。
 
-`icon` を省くと、CLI 0.2.2 はウィンドウに折れ線グラフを描いた shinytauri 独自のアイコンを使う。製品のアイコンに替える場合は、再配布する権利を持つ `.ico` を指定する。以前の CLI で Tauri の既定ロゴのままインストーラーを作った場合は、0.2.2 以降でビルドし直せる。[配布済みアプリの更新](distribution.qmd)・[Tauri の商標ガイドライン](https://v2.tauri.app/about/trademark/#applications)
+`icon` を省くと、CLI 0.2.2 以降はウィンドウに折れ線グラフを描いた shinytauri 独自のアイコンを使う。製品のアイコンに替える場合は、再配布する権利を持つ `.ico` を指定する。以前の CLI で Tauri の既定ロゴのままインストーラーを作った場合は、0.2.2 以降でビルドし直せる。[配布済みアプリの更新](distribution.qmd)・[Tauri の商標ガイドライン](https://v2.tauri.app/about/trademark/#applications)
 
 `licenseFile` を指定すると、対話形式のインストール時に利用規約が表示される。省略時とサイレントインストール時には同意画面を表示しない。インストール後も規約を読めるようにするには、アプリ内に規約ファイルを置き、`files` にそのパスを加える。第三者のソフトウェアを含む場合は、[インストーラーの再配布とライセンス](distribution.qmd#redistribution)も参照する。
 
@@ -67,7 +72,7 @@ licenseFile = "branding/利用規約.txt"
 
 `init` はアプリの直下から `app.R` または `server.R` を探す。`server.R` と画面を分ける場合は、R で書いた画面を `ui.R` に、HTML で書いた画面を `www/index.html` に置ける。
 
-`app.R`、`server.R`、`ui.R`、`global.R`、`www/` は大文字と小文字を区別せずに探し、設定には実際の名前を記録する。たとえば `app.r` はそのまま使える。Linux 上で `app.R` と `APP.r` が同じ場所にあると、Windows が区別できないため `init` はエラーになる。
+`app.R`、`server.R`、`ui.R`、`global.R`、`www/` は大文字と小文字を区別せずに探し、設定には実際の名前を記録する。たとえば `app.r` はそのまま使える。Windows では通常、大文字と小文字だけが異なる名前を同じ場所で区別できない。配布対象に `www/Map.png` と `www/map.png` があれば、一方を別名にして、アプリ内の参照と `files` を更新する。親ディレクトリの綴りもそろえる。CLI はビルド機によらず同じ規則で名前を照合するため、古い Windows ボリュームでは区別できる一部の Unicode 文字の組み合わせも衝突として報告する。
 
 `global.R` と `R/`、`www/`、`data/` にある実行用ファイルも初期設定に含める。`rhino.yml` があるアプリでは `app/` や `config.yml` も対象になる。独自の場所にあるテンプレートや辞書は `files` に追記する。
 
@@ -92,6 +97,26 @@ shinytauri inspect
 `publisher`、`icon`、`licenseFile` を指定した場合、`inspect` は発行元とインストーラー用ファイルのうち指定した項目を表示する。ファイルのパスは設定ファイルを基準に解決し、ファイルが存在して空でないことを確かめる。アイコンとライセンス文書の形式はビルド時に検証する。
 
 対応ソースを渡す場合は、`sourceBundle` を指定して `inspect` を実行する。`Source bundle` に、アーカイブまたはディレクトリの絶対パスが表示される。
+
+### `source()` で読む R ファイル
+
+`app.R` で `source("helpers.R")` を呼ぶ場合、`helpers.R` もインストール先に必要である。`inspect` か `build` が同梱漏れを報告したら、表示された参照元を確認し、既存の `files` に参照先を加える。たとえば、この 2 ファイルで構成するアプリなら次のように書く。
+
+```toml
+files = ["app.R", "helpers.R"]
+```
+
+検査はアプリの R コードを実行せず、起動時に直接呼び出す `source()` のうち、文字列で記述したローカルの相対パスを調べる。条件に応じて読むファイルや、ファイル名を実行時に組み立てる場合は、必要なファイルを配布者が確認して `files` に加える。
+
+## 起動に時間がかかるアプリ {#startup-timeout}
+
+初期データの読み込みに時間がかかる場合、`shinytauri.toml` で待ち時間を延ばし、再ビルドする。次の例は合計で 3 分待つ。
+
+```toml
+startupTimeoutSeconds = 180
+```
+
+待ち時間には R の起動、Shiny の待受ポートの通知、最初の HTTP 応答が含まれる。期限に達したら、起動画面とホストログで待っていた段階を確認できる。[起動ログの読み方](distribution.qmd#起動の進み具合とログ)
 
 ## Quarto を使うアプリ
 
