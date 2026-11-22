@@ -2,7 +2,7 @@
 title: "Windows での動作確認"
 ---
 
-ビルドが成功すると最後にインストーラーのパスが表示される。通常は設定ファイルの隣の `dist/` にある `*-setup.exe` を利用者に渡す。CLI やアプリのソースを別途渡す必要はない。
+ビルドが成功すると最後にインストーラーのパスが表示される。通常は設定ファイルの隣の `dist/` にある `*-setup.exe` を利用者に渡す。利用者はこのファイルからアプリをインストールできる。
 
 ## 配布前に試す
 
@@ -58,7 +58,9 @@ Get-Content -LiteralPath $log.FullName -Encoding UTF8 |
 
 ## インストーラーの中身
 
-[shinyelectron の配布方式](https://github.com/coatless-rpkg/shinyelectron)を参考に、ポータブル R とアプリが使う R ライブラリを別のディレクトリに配置する。CLI は [portable-r-windows の公式リリース](https://github.com/portable-r/portable-r-windows/releases)の SHA-256 を Windows 用ロックに記録し、ビルド時に取得した R の ZIP と照合する。既存の rig ロックに SHA-256 がない場合も、公式の値で照合する。Quarto を同梱するときは [Windows 版 1.11.9](https://github.com/quarto-dev/quarto-cli/releases/tag/v1.11.9) のアーカイブを固定の SHA-256 と照合する。R パッケージの ZIP は Windows 用ロックの SHA-256 と照合する。SHA-256 がない旧ロックでも展開後の名前とバージョンを照合する。[依存パッケージとビルド用キャッシュ](dependencies.qmd)
+ポータブル R と依存パッケージをアプリと一緒に配布する発想は、shinyelectron の `bundled` 方式に由来する。shinytauri では R 本体と追加パッケージを別々のディレクトリに配置する。[shinyelectron のリポジトリ](https://github.com/coatless-rpkg/shinyelectron)・[配布方式の解説](https://r-pkg.thecoatlessprofessor.com/shinyelectron/articles/runtime-strategies.html)
+
+CLI は [portable-r-windows の公式リリース](https://github.com/portable-r/portable-r-windows/releases)の SHA-256 を Windows 用ロックに記録し、ビルド時に取得した R の ZIP と照合する。既存の rig ロックに SHA-256 がない場合も、公式の値で照合する。Quarto を同梱するときは [Windows 版 1.11.9](https://github.com/quarto-dev/quarto-cli/releases/tag/v1.11.9) のアーカイブを固定の SHA-256 と照合する。R パッケージの ZIP は Windows 用ロックの SHA-256 と照合する。SHA-256 がない旧ロックでも展開後の名前とバージョンを照合する。[依存パッケージとビルド用キャッシュ](dependencies.qmd)
 
 | 配置先 | 用途 |
 | --- | --- |
@@ -66,3 +68,15 @@ Get-Content -LiteralPath $log.FullName -Encoding UTF8 |
 | `offline/R/`、`offline/library/` | ポータブル R とアプリの実行用パッケージ |
 | `offline/serve-bundled.R` | 同梱 R でアプリを起動する共通スクリプト |
 | `offline/quarto/` | `quarto = true` の場合に使う Quarto CLI |
+
+## インストーラーの再配布とライセンス {#redistribution}
+
+`offline/LICENSE` は shinytauri のホストコードの MIT ライセンスである。`shinytauri.toml` の `licenseFile` はアプリの利用規約をインストール時に表示するための設定である。第三者のソフトウェアや素材を同梱するときは、それぞれのライセンスを読み、どの著作権表示や文書を利用者に渡す必要があるかを確認する。
+
+配布する版をテスト用 PC にインストールし、次の内容を確認する。
+
+- **R と R パッケージ**　R 本体の条件は `offline/R/doc/COPYRIGHTS` と `offline/R/COPYING` にある。R に付属するパッケージは `offline/R/library/`、追加パッケージは `offline/library/` にある。それぞれの `DESCRIPTION` の `License` 欄を確認する。たとえば Shiny 1.14.0 の `MIT + file LICENSE` では、パッケージの `LICENSE` に著作権者が記され、MIT の本文は `offline/R/share/licenses/MIT` にある。パッケージが含む JavaScript や CSS の著作権表示も保持する。[R のライセンス](https://www.r-project.org/Licenses/)・[Shiny のライセンス表示](https://github.com/rstudio/shiny/blob/v1.14.0/LICENSE)
+- **対応するソースコード**　R など GPL のバイナリを再配布する際は、適用するライセンスが認める方法で、受領者が対応する完全なソースを入手できるようにする。たとえばウェブで配布する場合は、配布したバイナリに対応するソースと必要なビルドスクリプトを、インストーラーと同じ配布場所から取得できるようにする方法がある。[GPLv2 第3条](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html#section3)・[GPLv3 第6条](https://www.gnu.org/licenses/gpl-3.0.html#section6)
+- **ホストと追加の同梱物**　ホストに組み込む Tauri と Rust の依存ライブラリ、アプリに追加したフォントや画像も対象になる。`quarto = true` の場合、Quarto 1.11.9 本体は MIT、その付属ツールの一つである Pandoc 3.10 は GPLv2 以降で配布されている。アプリ側で用意したライセンス文書は `files` に追加すれば `offline/app/` から読める。[同梱ファイルの設定](configuration.qmd)・[Quarto 本体のライセンス](https://github.com/quarto-dev/quarto-cli/blob/v1.11.9/COPYING.md)・[Pandoc 3.10 のライセンス](https://github.com/jgm/pandoc/blob/3.10/pandoc.cabal)
+
+CLI 0.2.1 は、ホストに組み込む Rust ライブラリのライセンス文書一式や、同梱するバイナリに対応するソース一式を生成しない。配布前に、実際に使った版に合わせて用意する。

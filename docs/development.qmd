@@ -101,3 +101,11 @@ dist plan
 ```
 
 `cli-v<バージョン>` タグのリリースワークフローが各 OS 用のアーカイブを生成する。Windows の受け入れ試験では別プロジェクトとして初期化した最小アプリと Rhino デモをインストールし、WebView2 の操作、Quarto レポート生成、ウィンドウ終了時の R プロセスを確認する。リリース時にはビルド機に合う CLI のアーカイブとチェックサムを配布する。
+
+### CLI 0.2.1 のライセンス表示 {#cli-notices}
+
+CLI 0.2.1 の Windows・Linux 用アーカイブに付属する `LICENSE` は shinytauri 自身の MIT ライセンスである。両方の実行ファイルが `clap_builder` を通じて利用する `strsim` 0.11.1 の著作権表示は、配布物から欠けている。次の配布に向けて各ターゲットのバイナリに組み込む依存ライブラリを特定し、必要な著作権表示、ライセンス本文、NOTICE を収録する。アーカイブを展開して、それらの文書を読めることも検査する。[strsim 0.11.1 の MIT ライセンス](https://github.com/rapidfuzz/strsim-rs/blob/v0.11.1/LICENSE)
+
+両 OS の CLI にはホストのテンプレートも入っている。0.2.1 は Tauri の既定アイコンを画像データとして埋め込んでいる。テンプレートの既定アイコンを、生成したアプリとともに再配布できる画像に替えることも、次の配布に向けた課題である。[既定アイコンの条件とアプリ側の設定](configuration.qmd)
+
+生成する Windows アプリのホストには、CLI とは別の依存ライブラリが入る。たとえば、0.2.1 で使う WebView2 Loader は Microsoft の SDK に由来する。ホストを再配布するときは SDK に付属する `LICENSE.txt` と `NOTICE.txt` も確認する。[Microsoft.Web.WebView2 1.0.3800.47](https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.3800.47)・[インストーラーの再配布とライセンス](distribution.qmd#redistribution)

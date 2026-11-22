@@ -58,9 +58,9 @@ licenseFile = "branding/利用規約.txt"
 
 `publisher` を省くと、通常は `identifier` の 2 番目の要素が発行元になる。たとえば `jp.example.counter` の発行元は `example` になる。Windows インストーラーは発行元と製品名を使ってインストール先を記録する。配布済みの製品を更新するときは、これまでの発行元を使う。
 
-`icon` を省くと、shinytauri に同梱されたアイコンを使う。
+`icon` を省くと、CLI 0.2.1 は Tauri の既定ロゴを使う。Tauri の商標ガイドラインに従い、アプリを配布するときは、配布する権利を持つ `.ico` を指定する。既定ロゴの作者は Alve Larsson、Daniel Thompson-Yvetot、Guillaume Chau であり、ロゴのライセンスは CC BY-NC-ND である。[Tauri のライセンスとクレジット](https://github.com/tauri-apps/tauri/tree/tauri-cli-v2.12.6#licenses)・[商標ガイドラインのアプリ向けの規定](https://v2.tauri.app/about/trademark/#applications)
 
-`licenseFile` を指定すると、対話形式のインストール時に利用規約が表示される。省略時とサイレントインストール時には同意画面を表示しない。インストール後も規約を読めるようにするには、アプリ内に規約ファイルを置き、`files` にそのパスを加える。ホストの MIT ライセンスは `offline/LICENSE` に入る。
+`licenseFile` を指定すると、対話形式のインストール時に利用規約が表示される。省略時とサイレントインストール時には同意画面を表示しない。インストール後も規約を読めるようにするには、アプリ内に規約ファイルを置き、`files` にそのパスを加える。第三者のソフトウェアを含む場合は、[インストーラーの再配布とライセンス](distribution.qmd#redistribution)も参照する。
 
 ## 同梱ファイルを選ぶ
 
