@@ -343,8 +343,19 @@ validate_branding_file <- function(key, path) {
   }
 }
 
-read_bundle <- function(path, for_lock = FALSE) {
+read_bundle <- function(path, for_lock = FALSE, engine = getwd()) {
   spec <- RcppTOML::parseTOML(path)
+  # RcppTOML narrows 64-bit integers and flattens arrays. Read this setting
+  # from the original TOML with the same typed parser used by CLI inspect.
+  spec$startupTimeoutSeconds <- if ("startupTimeoutSeconds" %in% names(spec)) {
+    as.integer(run_bundle_cli(
+      engine,
+      c("read-startup-timeout", absolute_path(path)),
+      capture = TRUE
+    ))
+  } else {
+    90L
+  }
   base <- dirname(absolute_path(path))
   if (!is.null(spec$rVersion)) {
     validate_r_version(spec$rVersion)
@@ -789,7 +800,7 @@ publish_installer <- function(
 
 build_windows <- function(profile, output = NULL, engine = getwd()) {
   options(timeout = max(120L, getOption("timeout")))
-  spec <- read_bundle(profile)
+  spec <- read_bundle(profile, engine = engine)
   engine <- absolute_path(engine)
   source(file.path(engine, "scripts/distribution-sources.R"), local = TRUE)
   if (spec$managed || isTRUE(spec$checkMinimal)) {
@@ -835,6 +846,11 @@ build_windows <- function(profile, output = NULL, engine = getwd()) {
   bundle <- prepare_source_bundle(spec, profile, stage, output, cache)
   payload <- file.path(stage, "payload")
   stage_app(spec, file.path(payload, "app"), output)
+  jsonlite::write_json(
+    list(startupTimeoutSeconds = spec$startupTimeoutSeconds),
+    file.path(payload, "startup.json"),
+    auto_unbox = TRUE
+  )
   if (isTRUE(spec$checkMinimal)) {
     check_minimal_imports(file.path(payload, "app"), target)
   }
@@ -935,7 +951,7 @@ if (sys.nframe() == 0L) {
   engine <- dirname(dirname(normalizePath(script, mustWork = TRUE)))
   if (length(args) == 2L && identical(args[[1L]], "--lock")) {
     source(file.path(engine, "scripts/runtime-deps.R"))
-    lock_windows(read_bundle(args[[2L]], for_lock = TRUE))
+    lock_windows(read_bundle(args[[2L]], for_lock = TRUE, engine = engine))
   } else {
     build_windows(
       if (length(args)) args[[1L]] else file.path(engine, "bundles/rhino.toml"),

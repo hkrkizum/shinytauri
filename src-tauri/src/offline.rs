@@ -106,8 +106,9 @@ fn serve(
     window: &WebviewWindow,
     payload: &Path,
     log: Option<File>,
+    seconds: u32,
 ) -> Result<ExitStatus> {
-    let deadline = Instant::now() + Duration::from_secs(90);
+    let deadline = Instant::now() + Duration::from_secs(u64::from(seconds));
     let scratch = tempfile::tempdir()?;
     let ready = scratch.path().join("ready");
     let home = payload.join("R");
@@ -194,11 +195,22 @@ pub fn start(app: &mut tauri::App) -> Result<()> {
         host.publish(&window, host.startup.snapshot());
         let result = payload
             .map_err(Box::<dyn std::error::Error>::from)
-            .and_then(|dir| serve(&host, &window, &dir.join("offline"), log));
-        let snapshot = match result {
-            Ok(status) => host.startup.stop(&format!("R server stopped ({status})")),
-            Err(error) => host.startup.fail(&error.to_string()),
-        };
+            .and_then(|dir| {
+                let payload = dir.join("offline");
+                let seconds = readiness::startup_timeout(&payload)?;
+                match serve(&host, &window, &payload, log, seconds) {
+                    Ok(status) => Ok(host.startup.stop(&format!("R server stopped ({status})"))),
+                    Err(error)
+                        if error
+                            .downcast_ref::<io::Error>()
+                            .is_some_and(|e| e.kind() == io::ErrorKind::TimedOut) =>
+                    {
+                        Ok(host.startup.timed_out(seconds))
+                    }
+                    Err(error) => Err(error),
+                }
+            });
+        let snapshot = result.unwrap_or_else(|error| host.startup.fail(&error.to_string()));
         // navigate() may still be in flight when R exits, even if url() still
         // points to the splash. A fresh local navigation wins that race and
         // page_loaded replays the full terminal snapshot once the DOM exists.

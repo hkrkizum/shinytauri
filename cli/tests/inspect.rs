@@ -5,6 +5,54 @@ use tempfile::tempdir;
 
 const LOCK: &str = include_str!("../../bundles/minimal/rproj.lock");
 
+#[test]
+fn reports_effective_timeout_and_rejects_non_integer_or_out_of_range_values() {
+    let root = tempdir().unwrap();
+    let spec = root.path().join("shinytauri.toml");
+    fs::write(root.path().join("app.R"), "").unwrap();
+    fs::write(root.path().join("test.lock"), LOCK).unwrap();
+    let base = "app='.'\nfiles=['app.R']\nlock='test.lock'\n";
+    for (key, expected) in [("", 90), ("startupTimeoutSeconds=0x78", 120)] {
+        fs::write(&spec, format!("{base}{key}")).unwrap();
+        let result = inspect(root.path(), &[]);
+        assert!(result.status.success(), "{result:?}");
+        assert!(
+            String::from_utf8_lossy(&result.stdout)
+                .lines()
+                .any(|line| { line == format!("Startup timeout: {expected} seconds") })
+        );
+    }
+    for invalid in [
+        "0",
+        "-1",
+        "1.0",
+        "'2'",
+        "true",
+        "[1]",
+        "2147483648",
+        "-4294967295",
+        "4294967386",
+    ] {
+        fs::write(&spec, format!("{base}startupTimeoutSeconds={invalid}")).unwrap();
+        let result = inspect(root.path(), &[]);
+        assert!(!result.status.success(), "{invalid}");
+        assert!(String::from_utf8_lossy(&result.stderr).contains("startupTimeoutSeconds"));
+        for command in ["build", "lock"] {
+            let result = Command::new(env!("CARGO_BIN_EXE_shinytauri"))
+                .env("PATH", "")
+                .current_dir(root.path())
+                .arg(command)
+                .output()
+                .unwrap();
+            assert!(!result.status.success());
+            assert!(
+                String::from_utf8_lossy(&result.stderr).contains("startupTimeoutSeconds"),
+                "{command}: {result:?}"
+            );
+        }
+    }
+}
+
 fn inspect(cwd: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_shinytauri"))
         .env("PATH", "")
