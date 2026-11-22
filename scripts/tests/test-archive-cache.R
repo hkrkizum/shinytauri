@@ -1,11 +1,12 @@
 check_archive_cache <- function() {
-  root <- tempfile("archive cache 日本語 ")
+  root <- tempfile("package builds ")
+  cache <- file.path(root, "archive cache \u65e5\u672c\u8a9e")
   stopifnot(dir.create(root))
   on.exit(unlink(root, recursive = TRUE))
   subject <- new.env(parent = globalenv())
   sys.source("scripts/build-windows.R", subject)
   sys.source("scripts/runtime-deps.R", subject)
-  subject$archive_cache_dir <- function() file.path(root, "cache")
+  subject$archive_cache_dir <- function() cache
   asset <- file.path(root, "shiny.zip")
   # An actual ZIP with shiny/DESCRIPTION. It needs no zip executable on Windows.
   writeBin(
@@ -36,7 +37,7 @@ check_archive_cache <- function() {
   stage("first build")
   stage("second build")
   stopifnot(calls$n == 1L)
-  object <- file.path(root, "cache", paste0(digest, ".zip"))
+  object <- file.path(cache, paste0(digest, ".zip"))
   stopifnot(file.exists(object))
   writeLines("corrupted cache", object)
   stage("repair")
@@ -45,7 +46,10 @@ check_archive_cache <- function() {
   unlink(object)
   target$package_sha256 <- paste(rep("0", 64L), collapse = "")
   expect_bundle_error(stage("mismatch"), "SHA-256 mismatch for shiny")
-  stopifnot(!length(list.files(dirname(object), pattern = "[.]zip$")))
+  stopifnot(
+    !file.exists(file.path(cache, paste0(target$package_sha256, ".zip"))),
+    !file.exists(object)
+  )
   target$package_sha256 <- pins
   download <- subject$download_zip
   writeLines("previously damaged object", object)
@@ -54,9 +58,17 @@ check_archive_cache <- function() {
     stop("interrupted transfer")
   }
   expect_bundle_error(stage("interrupt"), "interrupted transfer")
-  stopifnot(!length(list.files(dirname(object), pattern = "[.]zip$")))
+  stopifnot(!file.exists(object))
   subject$download_zip <- download
   stage("recover")
+  # An unrelated writer may hold the cache lock throughout a long download.
+  # Finish a verified build from private bytes without publishing under its lock.
+  guard <- subject$lock_cache
+  subject$lock_cache <- function(dir) NULL
+  unlink(object)
+  stage("busy cache")
+  stopifnot(!file.exists(object))
+  subject$lock_cache <- guard
   # Locks without SHA-256 continue to fetch and check DESCRIPTION on every build.
   target$package_sha256 <- NULL
   count <- calls$n
@@ -79,7 +91,8 @@ check_cache_workers <- function() {
   on.exit(parallel::stopCluster(workers), add = TRUE, after = FALSE)
   readbacks <- parallel::clusterCall(
     workers,
-    function(script, dir, fixture, sum) {
+    function(script, dir, fixture, sum, libraries) {
+      .libPaths(libraries)
       subject <- new.env()
       sys.source(script, subject)
       dest <- file.path(dir, paste0("private-", Sys.getpid()))
@@ -95,7 +108,8 @@ check_cache_workers <- function() {
     normalizePath("scripts/build-windows.R"),
     root,
     fixture,
-    sum
+    sum,
+    .libPaths()
   )
   stopifnot(
     identical(unlist(readbacks), rep(sum, 2L)),

@@ -45,13 +45,17 @@ lock_cache <- function(dir) {
       ". Set SHINYTAURI_CACHE_DIR to a writable directory."
     )
   }
-  filelock::lock(file.path(dir, "archives.lock"))
+  # Caching is optional. A slow or stalled writer must not block an unrelated
+  # build indefinitely; a reader without the lock can verify private copies.
+  filelock::lock(file.path(dir, "archives.lock"), timeout = 5000L)
 }
 
 # All callers hold the cache lock. Publish complete, verified bytes on the
 # cache's own filesystem, even when the private build directory is on another.
 store_archives <- function(files, sums, dir) {
-  part <- tempfile(".incoming-", tmpdir = dir)
+  # tempfile translates its tmpdir to the native code page on Windows.
+  # Keep a Unicode cache path intact and generate only the temporary name.
+  part <- file.path(dir, basename(tempfile(".incoming-")))
   on.exit(unlink(part))
   for (i in seq_along(files)) {
     object <- file.path(dir, paste0(sums[[i]], ".zip"))
@@ -83,7 +87,9 @@ fetch_archives <- function(urls, files, pins = NULL) {
   )
   dir <- archive_cache_dir()
   guard <- lock_cache(dir)
-  on.exit(filelock::unlock(guard))
+  if (!is.null(guard)) {
+    on.exit(filelock::unlock(guard))
+  }
   # Verify the private copies that will actually be unpacked.
   hits <- vapply(
     seq_along(files),
@@ -98,7 +104,7 @@ fetch_archives <- function(urls, files, pins = NULL) {
         return(TRUE)
       }
       # An interrupted re-fetch must not leave this known-bad entry available.
-      if (unlink(object) != 0L) {
+      if (!is.null(guard) && unlink(object) != 0L) {
         stop("Could not remove damaged cached archive: ", object)
       }
       FALSE
@@ -119,7 +125,9 @@ fetch_archives <- function(urls, files, pins = NULL) {
     label <- if (is.null(names(urls))) basename(urls[[i]]) else names(urls)[[i]]
     stop("SHA-256 mismatch for ", label)
   }
-  store_archives(files, pins, dir)
+  if (!is.null(guard)) {
+    store_archives(files, pins, dir)
+  }
   invisible(NULL)
 }
 
@@ -266,8 +274,12 @@ pin_packages <- function(target, stage) {
   stopifnot(all(vapply(sums, valid_sha256, logical(1))))
   dir <- archive_cache_dir()
   guard <- lock_cache(dir)
-  on.exit(filelock::unlock(guard))
-  store_archives(files, sums, dir)
+  if (!is.null(guard)) {
+    on.exit(filelock::unlock(guard))
+  }
+  if (!is.null(guard)) {
+    store_archives(files, sums, dir)
+  }
   stats::setNames(sums, vapply(target$packages, function(p) p$package, ""))
 }
 
