@@ -303,14 +303,44 @@ check_preflight <- function() {
     "entry point"
   )
   stopifnot(file.create(file.path(spec$app, "SERVER.r")))
+  writeLines("<body>HTML UI</body>", file.path(spec$app, "www/index.html"))
   spec$files <- c("SERVER.r", "www")
-  stage_app(spec, file.path(root, "html-ui"))
+  dest <- file.path(root, "html-ui")
+  stage_app(spec, dest)
+  stopifnot(
+    "SERVER.r" %in% list.files(dest),
+    identical(
+      readLines(file.path(dest, "www/index.html")),
+      "<body>HTML UI</body>"
+    )
+  )
   if (.Platform$OS.type != "windows") {
     stopifnot(file.symlink(root, file.path(spec$app, "www/jump")))
     expect_bundle_error(stage_app(spec, file.path(root, "stage")), "link")
   }
 }
 check_preflight()
+
+check_entrypoint_collisions <- function() {
+  root <- tempfile()
+  app <- file.path(root, "source")
+  stopifnot(dir.create(file.path(app, "www"), recursive = TRUE))
+  on.exit(unlink(root, recursive = TRUE))
+  stopifnot(file.create(file.path(app, "app.r")))
+  spec <- list(app = app, files = c("app.r", "APP.R"))
+  expect_bundle_error(stage_app(spec, file.path(root, "overlap")), "Windows")
+  if (!file.exists(file.path(app, "APP.R"))) {
+    stopifnot(file.create(file.path(app, "www", c("index.html", "Index.HTML"))))
+    spec$files <- c("app.r", "www")
+    expect_bundle_error(stage_app(spec, file.path(root, "html")), "Windows")
+    # A hand-authored manifest can select just one of the existing variants.
+    spec$files <- c("app.r", "www/index.html")
+    dest <- file.path(root, "selected")
+    stage_app(spec, dest)
+    stopifnot(identical(list.files(file.path(dest, "www")), "index.html"))
+  }
+}
+check_entrypoint_collisions()
 
 check_cli_entry <- function() {
   root <- tempfile("engine path with spaces ")
