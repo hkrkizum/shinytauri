@@ -4,6 +4,8 @@ title: "Rhino デモを動かす"
 
 リポジトリの `src-shiny/` に Rhino 製のサイコロ集計アプリがある。2 個のサイコロを振った結果を集計し、Quarto のダッシュボードを HTML ファイルとして保存できる。素の Shiny アプリと配布設定を比べるには `examples/minimal/` と `bundles/minimal/` を使う。
 
+![Windows にインストールした Rhino デモのレポート画面](images/rhino-windows.png){fig-alt="レポートの作成・ダウンロードボタンと、サイコロの合計値で絞り込める集計表"}
+
 ## デモのインストーラーを作る
 
 [CLI とビルド環境](installation.qmd)を準備する。リポジトリのルートで次のコマンドを実行する。
