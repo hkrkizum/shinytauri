@@ -54,6 +54,25 @@ shinytauri build .
 
 `lock` は独立した作業場所で依存を解決し、`.shinytauri/windows.lock` を作る。`build` はそのロックに記録された Windows バイナリを使う。`shinytauri.toml` と `.shinytauri/windows.lock` はアプリのソースと一緒にバージョン管理する。依存定義を変更したら、再度 `shinytauri lock .` を実行したうえでビルドする。
 
+## Windows パッケージの ZIP を固定する
+
+`shinytauri lock` は各パッケージの Windows 用 ZIP を取得し、パッケージ名とバージョンを確認する。取得した ZIP の SHA-256 を `.shinytauri/windows.lock` の `[shinytauri.package_sha256]` に記録する。`build` は展開前にロックと照合する。同じバージョンの ZIP でも中身が変わればビルドは止まる。
+
+以前の CLI で作った Windows 用ロックも使える。`shinytauri lock .` を再実行すると ZIP を再取得して SHA-256 を記録する。パッケージや SHA-256 の更新を確認してロックをコミットする。rig のロックと以前の最小ロックに SHA-256 がない場合、ビルドごとにパッケージの ZIP を取得し、展開した `DESCRIPTION` のパッケージ名とバージョンを照合する。今の CLI に付属する最小ロックには全パッケージの SHA-256 が入っている。
+
+## ビルド機で ZIP を再利用する
+
+CLI は SHA-256 を確認したポータブル R、Quarto、R パッケージの ZIP をビルド機に保存する。同じ SHA-256 の ZIP があれば、次のビルドでは作業ディレクトリにコピーし、照合してから展開する。コピーの SHA-256 が一致しなければ ZIP を再取得する。取得したファイルも一致しない場合はビルドが止まる。
+
+既定の保存先はビルド用 R の `tools::R_user_dir("shinytauri", "cache")` 以下である。保存先を変えるときは、アプリに同梱するディレクトリの外に書き込み可能な場所を選ぶ。その絶対パスを `SHINYTAURI_CACHE_DIR` に指定する。次は Linux で別のディレクトリを使う例である。
+
+```sh
+export SHINYTAURI_CACHE_DIR="$HOME/.cache/shinytauri"
+shinytauri build .
+```
+
+キャッシュには配布用 ZIP が入る。依存解決や Nix、Cargo、rig の初期設定には別途ネットワーク接続が必要になることがある。
+
 ## renv と DESCRIPTION
 
 CRAN パッケージを使う `renv.lock` がある場合も、アプリのディレクトリで実行する。
