@@ -17,6 +17,11 @@ expect_text(
   cli,
   c(
     "strsim 0.11.1",
+    "tree-sitter-r authors",
+    "Max Brunsfeld",
+    "src/unicode/LICENSE",
+    "src/portable/endian.h",
+    "https://www.unicode.org/Public/17.0.0/ucd/UnicodeData.txt",
     "Danny Guo",
     "Titus Wormer",
     "Akash Kurdekar",

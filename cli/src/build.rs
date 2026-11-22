@@ -1,7 +1,7 @@
 use crate::{Result, template};
 use std::{
     env,
-    path::{self, PathBuf},
+    path::{self, Path, PathBuf},
     process::Command,
 };
 
@@ -19,6 +19,27 @@ fn run(command: &mut Command) -> Result<()> {
 pub(crate) enum Action {
     Build(Option<PathBuf>),
     Lock,
+}
+
+pub(crate) fn read_config(path: &Path) -> Result<toml::Table> {
+    Ok(std::fs::read_to_string(path)?
+        .parse()
+        .map_err(|e: toml::de::Error| {
+            format!("Invalid bundle config {}: {}", path.display(), e.message())
+        })?)
+}
+
+pub(crate) fn startup_timeout(spec: &toml::Table) -> Result<i32> {
+    match spec.get("startupTimeoutSeconds") {
+        None => Ok(90),
+        Some(value) => value
+            .as_integer()
+            .and_then(|n| i32::try_from(n).ok())
+            .filter(|n| *n > 0)
+            .ok_or_else(|| {
+                "Expected an integer from 1 to 2147483647 for startupTimeoutSeconds".into()
+            }),
+    }
 }
 
 pub(crate) fn config_path(app: Option<PathBuf>, config: Option<PathBuf>) -> Result<PathBuf> {
@@ -45,6 +66,7 @@ pub(crate) fn execute(app: Option<PathBuf>, config: Option<PathBuf>, action: Act
         return Err("Building currently requires x86_64 Linux or x64 Windows.".into());
     }
     let config = config_path(app, config)?;
+    startup_timeout(&read_config(&config)?)?;
     let args = match action {
         Action::Build(out) => {
             let out = path::absolute(out.unwrap_or_else(|| config.parent().unwrap().join("dist")))?;
@@ -64,9 +86,13 @@ pub(crate) fn execute(app: Option<PathBuf>, config: Option<PathBuf>, action: Act
     }
     let engine = scratch.tempdir()?;
     template::extract(engine.path())?;
+    let executable = env::current_exe()?;
     let context = |program: &str| {
         let mut process = Command::new(program);
-        process.current_dir(engine.path()).env("RIG_MODE", "user");
+        process
+            .current_dir(engine.path())
+            .env("RIG_MODE", "user")
+            .env("SHINYTAURI_CLI_EXECUTABLE", &executable);
         process
     };
     if cfg!(target_os = "linux")

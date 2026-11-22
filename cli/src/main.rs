@@ -2,7 +2,9 @@ mod build;
 mod doctor;
 mod init;
 mod inspect;
+mod sources;
 mod template;
+mod windows_names;
 
 use clap::{Parser, Subcommand};
 use std::{error::Error, path::PathBuf, process::ExitCode};
@@ -24,6 +26,8 @@ struct Cli {
 enum Commands {
     /// Check the build machine and show how to install missing tools.
     Doctor,
+    #[command(hide = true)]
+    ReadStartupTimeout { config: PathBuf },
     /// Create shinytauri.toml in an existing Shiny app directory.
     Init {
         #[arg(default_value = ".")]
@@ -56,6 +60,8 @@ enum Commands {
         #[arg(long)]
         config: Option<PathBuf>,
     },
+    #[command(hide = true)]
+    CheckStagedSources { stage: PathBuf, app: PathBuf },
     /// Build the Windows installer from an app directory or a bundle TOML.
     Build {
         /// Directory containing shinytauri.toml (defaults to the current directory).
@@ -88,6 +94,10 @@ fn parse_r_version(value: &str) -> std::result::Result<String, String> {
 fn main() -> ExitCode {
     let result = match Cli::parse().command {
         Commands::Doctor => doctor::run(),
+        Commands::CheckStagedSources { stage, app } => inspect::staged_sources(&stage, &app),
+        Commands::ReadStartupTimeout { config } => build::read_config(&config)
+            .and_then(|spec| build::startup_timeout(&spec))
+            .map(|seconds| println!("{seconds}")),
         Commands::Init {
             app,
             id,

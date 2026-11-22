@@ -28,7 +28,7 @@ shinytauri inspect .
 shinytauri build .
 ```
 
-`inspect` は配布するファイルと、同梱する R のバージョンやパッケージ数を表示する。新しい画像や CSS を追加したら、配布対象に含まれるか確認し、必要に応じて `shinytauri.toml` の `files` を更新する。`build` が `dist/` に作成した `*-setup.exe` を利用者に渡す。アプリの変更を配布するときは再度ビルドする。
+`inspect` は配布するファイルと、同梱する R のバージョンやパッケージ数を表示する。たとえば `app.R` で `source("helpers.R")` を呼ぶ場合は、`helpers.R` も `shinytauri.toml` の `files` に含める。新しい画像や CSS を追加したときも配布対象を確認する。`build` が `dist/` に作成した `*-setup.exe` を利用者に渡す。アプリの変更を配布するときは再度ビルドする。
 
 `DT` などを使う場合は `--package` で依存を宣言する。`renv.lock` や `DESCRIPTION` を使っている場合は、それらをもとに `shinytauri lock .` で Windows 用ロックを作成できる。既存の rig プロジェクトは Windows 用の `rproj.lock` を再利用できる。[アプリの依存パッケージ](docs/dependencies.qmd)
 

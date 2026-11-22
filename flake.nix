@@ -139,6 +139,8 @@
               SHINYTAURI_CARGO_TAURI = "${windowsTauri}/bin/cargo-tauri";
               SHINYTAURI_WINDOWS_SHELL = "1";
               R_LD_LIBRARY_PATH = "$ORIGIN/../../lib";
+              # The CLI's R parser runs on Linux during a Windows cross-build.
+              CC_x86_64_unknown_linux_gnu = "${pkgs.stdenv.cc}/bin/cc";
               NIX_LDFLAGS_x86_64_w64_mingw32 = "-L${pkgs.pkgsCross.mingwW64.windows.pthreads}/lib";
               CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER = "x86_64-w64-mingw32-gcc";
             };

@@ -201,22 +201,44 @@ impl Startup {
     pub fn child_spawned(&self, pid: u32) -> Snapshot {
         let mut state = self.state();
         state.r_pid = Some(pid);
-        self.transition(&mut state, Event::R, None)
+        self.transition(&mut state, Event::R, None, None)
     }
 
     pub fn advance(&self, event: Event) -> Snapshot {
-        self.transition(&mut self.state(), event, None)
+        self.transition(&mut self.state(), event, None, None)
     }
 
     pub fn fail(&self, detail: &str) -> Snapshot {
-        self.transition(&mut self.state(), Event::Failed, Some(detail))
+        self.transition(&mut self.state(), Event::Failed, Some(detail), None)
     }
 
     pub fn stop(&self, detail: &str) -> Snapshot {
-        self.transition(&mut self.state(), Event::Stopped, Some(detail))
+        self.transition(&mut self.state(), Event::Stopped, Some(detail), None)
     }
 
-    fn transition(&self, state: &mut State, event: Event, detail: Option<&str>) -> Snapshot {
+    pub fn timed_out(&self, seconds: u32) -> Snapshot {
+        let mut state = self.state();
+        let (phase, label) = if state
+            .events
+            .last()
+            .is_some_and(|step| step.event == Event::Http)
+        {
+            ("the Shiny HTTP response", "Shiny の HTTP 応答")
+        } else {
+            ("the Shiny port", "Shiny の待受ポートの通知")
+        };
+        let detail = format!("Startup timed out after {seconds} seconds waiting for {phase}");
+        let hint = format!("起動から {seconds} 秒以内に{label}を受け取れませんでした。");
+        self.transition(&mut state, Event::Failed, Some(&detail), Some(&hint))
+    }
+
+    fn transition(
+        &self,
+        state: &mut State,
+        event: Event,
+        detail: Option<&str>,
+        hint: Option<&str>,
+    ) -> Snapshot {
         let previous = state
             .events
             .last()
@@ -243,7 +265,7 @@ impl Startup {
                     (_, Event::Http) => "Shiny サーバーの応答を確認できませんでした。",
                     _ => "アプリ画面を開けませんでした。",
                 };
-                state.error = Some(reason.to_owned());
+                state.error = Some(hint.unwrap_or(reason).to_owned());
             }
         }
         self.view(state)
@@ -411,5 +433,27 @@ mod tests {
         let (_, second) = open_log(temp.path(), "host-1-123", "jsonl").unwrap();
         assert_ne!(first, second);
         assert_eq!(fs::read_to_string(first).unwrap(), "keep");
+    }
+
+    #[test]
+    fn timeouts_report_the_budget_and_phase_to_the_window_and_the_host_log() {
+        for (stage, label, english) in [
+            (Event::Load, "ポート", "the Shiny port"),
+            (Event::Http, "HTTP", "the Shiny HTTP response"),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let (startup, _) = Startup::new("App", Some(dir.path()));
+            startup.advance(stage);
+            let snapshot = startup.timed_out(12);
+            let hint = snapshot.error.as_deref().unwrap();
+            assert!(hint.contains("12 秒") && hint.contains(label), "{hint}");
+            let row = rows(&snapshot).pop().unwrap();
+            assert_eq!(row["event"], "failed");
+            assert_eq!(
+                row["detail"],
+                format!("Startup timed out after 12 seconds waiting for {english}")
+            );
+            assert_eq!(startup.snapshot().error, snapshot.error);
+        }
     }
 }

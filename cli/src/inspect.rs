@@ -1,4 +1,4 @@
-use crate::{Result, init, parse_r_version};
+use crate::{Result, build, init, parse_r_version};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -96,7 +96,7 @@ struct Inventory {
     missing: BTreeSet<String>,
 }
 
-fn is_link(meta: &fs::Metadata) -> bool {
+pub(crate) fn is_link(meta: &fs::Metadata) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
@@ -301,18 +301,25 @@ fn runtime(spec: &Table, base: &Path) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn staged_sources(stage: &Path, original: &Path) -> Result<()> {
+    let mut inventory = Inventory::default();
+    for entry in fs::read_dir(stage)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        inventory.entry(
+            stage,
+            name.to_str().ok_or("App resources must have UTF-8 names")?,
+            false,
+        )?;
+    }
+    crate::sources::check(stage, original, &inventory.files)
+}
+
 pub(crate) fn report(config: PathBuf) -> Result<()> {
     let config = config.canonicalize()?;
     let base = config.parent().unwrap();
-    let spec: Table = fs::read_to_string(&config)?
-        .parse()
-        .map_err(|e: toml::de::Error| {
-            format!(
-                "Invalid bundle config {}: {}",
-                config.display(),
-                e.message()
-            )
-        })?;
+    let spec = build::read_config(&config)?;
+    let timeout = build::startup_timeout(&spec)?;
     metadata(&spec)?;
     let app_path = base.join(string(&spec, "app")?.ok_or("Missing app directory in config")?);
     if !app_path.is_dir() {
@@ -321,7 +328,7 @@ pub(crate) fn report(config: PathBuf) -> Result<()> {
     let app = app_path.canonicalize()?;
     let files = app_paths(&spec, "files")?;
     let empty_dirs = app_paths(&spec, "emptyDirs")?;
-    init::check_entry_names(files.iter().chain(&empty_dirs).copied())?;
+    crate::windows_names::check(files.iter().chain(&empty_dirs).copied())?;
     let mut inventory = Inventory::default();
     for relative in files {
         inventory.entry(&app, relative, false)?;
@@ -330,7 +337,7 @@ pub(crate) fn report(config: PathBuf) -> Result<()> {
         inventory.entry(&app, relative, true)?;
     }
 
-    init::check_entry_names(
+    crate::windows_names::check(
         inventory
             .files
             .iter()
@@ -369,8 +376,10 @@ pub(crate) fn report(config: PathBuf) -> Result<()> {
         "Missing entries",
         inventory.missing.iter().map(String::as_str),
     );
+    crate::sources::check(&app, &app, &inventory.files)?;
     installer_inputs(&spec, base)?;
     runtime(&spec, base)?;
+    println!("Startup timeout: {timeout} seconds");
     if !inventory.missing.is_empty() {
         return Err("Some configured app resources are missing".into());
     }

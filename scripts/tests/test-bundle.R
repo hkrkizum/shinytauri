@@ -121,10 +121,13 @@ check_empty_directories <- function() {
   writeLines("source only", file.path(static, ".secret"))
   old <- setwd(tempdir())
   on.exit(setwd(old), add = TRUE, after = FALSE)
+  stage <- function(...) {
+    stage_app(..., case_table = file.path(old, "scripts/windows-name-case.txt"))
+  }
   spec <- read_bundle(profile)
   check_stage <- function(name) {
     dest <- file.path(root, name)
-    stage_app(spec, dest)
+    stage(spec, dest)
     for (dir in c("assets/static", "legacy/nested")) {
       staged <- file.path(dest, dir)
       stopifnot(
@@ -143,7 +146,7 @@ check_empty_directories <- function() {
   writeLines("explicit contents", file.path(static, ".gitkeep"))
   spec$files <- c("app.R", "assets/static/.gitkeep")
   dest <- file.path(root, "chosen")
-  stage_app(spec, dest)
+  stage(spec, dest)
   stopifnot(identical(
     readLines(file.path(dest, "assets/static/.gitkeep")),
     "explicit contents"
@@ -151,20 +154,20 @@ check_empty_directories <- function() {
   # Selecting a parent directory in files still opts in to its complete contents.
   spec$files <- c("app.R", "assets")
   dest <- file.path(root, "recursive")
-  stage_app(spec, dest)
+  stage(spec, dest)
   stopifnot(identical(
     readLines(file.path(dest, "assets/static/new.txt")),
     "later addition"
   ))
   spec$files <- "app.R"
   expect_bundle_error(
-    stage_app(spec, file.path(root, "collision"), file.path(static, "dist")),
+    stage(spec, file.path(root, "collision"), file.path(static, "dist")),
     "output directory"
   )
   for (bad in c("missing", "app.R")) {
     spec$emptyDirs <- bad
     expect_bundle_error(
-      stage_app(spec, file.path(root, paste0("bad-", bad))),
+      stage(spec, file.path(root, paste0("bad-", bad))),
       "directory"
     )
   }
@@ -173,7 +176,7 @@ check_empty_directories <- function() {
   if (.Platform$OS.type != "windows") {
     stopifnot(file.symlink(static, file.path(app, "shortcut")))
     spec$emptyDirs <- "shortcut"
-    expect_bundle_error(stage_app(spec, file.path(root, "symlink")), "link")
+    expect_bundle_error(stage(spec, file.path(root, "symlink")), "link")
   }
 }
 
@@ -195,6 +198,7 @@ check_external_build <- function() {
     dir.create(file.path(engine, "scripts")),
     dir.create(file.path(engine, "notices")),
     file.copy("scripts/distribution-sources.R", file.path(engine, "scripts")),
+    file.copy("scripts/windows-name-case.txt", file.path(engine, "scripts")),
     dir.create(project),
     file.copy("src-tauri/tauri.conf.json", file.path(engine, "src-tauri")),
     file.copy("LICENSE", engine),
@@ -220,7 +224,12 @@ check_external_build <- function() {
   sys.source("scripts/build-windows.R", subject)
   subject$stage_runtime <- function(...) NULL
   subject$stage_packages <- function(...) NULL
+  checkout <- normalizePath(".")
+  subject$run_bundle_cli <- function(engine, args, capture = FALSE) {
+    run_bundle_cli(checkout, args, capture)
+  }
   expect_defaults <- TRUE
+  expected_timeout <- 90L
   source_sha <- NULL
   subject$run_tauri <- function(engine, config, triple, target_dir) {
     contents <- jsonlite::read_json(config)
@@ -241,6 +250,8 @@ check_external_build <- function() {
       win$height == 600L
     )
     payload <- file.path(engine, "src-tauri", names(contents$bundle$resources))
+    startup <- jsonlite::read_json(file.path(payload, "startup.json"))
+    stopifnot(identical(startup$startupTimeoutSeconds, expected_timeout))
     manifest <- jsonlite::read_json(file.path(
       payload,
       "notices/components.json"
@@ -278,6 +289,21 @@ check_external_build <- function() {
   }
   old <- setwd(root)
   on.exit(setwd(old), add = TRUE, after = FALSE)
+  # Existing rig locks use the same post-stage source check as managed and
+  # bundled locks. Exercise the repository CLI from this unrelated directory.
+  app_entry <- file.path(project, "app.R")
+  original <- readLines(app_entry)
+  writeLines('source("omitted.R")', app_entry)
+  writeLines(
+    'stop("the inspector must never evaluate an app")',
+    file.path(project, "omitted.R")
+  )
+  expect_bundle_error(
+    subject$build_windows(profile, output, engine),
+    "CLI check failed"
+  )
+  stopifnot(!file.exists(file.path(output, "Sales_1.2.3_x64-setup.exe")))
+  writeLines(original, app_entry)
   subject$build_windows(profile, output, engine)
   published <- file.path(output, "Sales_1.2.3_x64-setup.exe")
   stopifnot(
@@ -324,11 +350,13 @@ check_external_build <- function() {
   writeLines("利用規約 A", license, useBytes = TRUE)
   custom <- c(
     lines,
+    'startupTimeoutSeconds = 0x78',
     'publisher = "販売 株式会社"',
     'icon = "../配布 素材/製品.ICO"',
     'licenseFile = "../配布 素材/利用規約.txt"'
   )
   writeLines(custom, profile, useBytes = TRUE)
+  expected_timeout <- 120L
   expect_defaults <- FALSE
   plain_run <- subject$run_tauri
   subject$run_tauri <- function(engine, config, triple, target_dir) {
@@ -357,6 +385,13 @@ check_external_build <- function() {
   writeLines("plain text", file.path(branding, "broken.ico"))
   writeBin(as.raw(c(0xff, 0xfe, 0x41, 0x00)), file.path(branding, "utf16.txt"))
   for (bad in list(
+    c("startupTimeoutSeconds = 0", "startupTimeoutSeconds"),
+    c("startupTimeoutSeconds = 1.0", "startupTimeoutSeconds"),
+    c("startupTimeoutSeconds = [1]", "startupTimeoutSeconds"),
+    c("startupTimeoutSeconds = []", "startupTimeoutSeconds"),
+    c("startupTimeoutSeconds = 2147483648", "startupTimeoutSeconds"),
+    c("startupTimeoutSeconds = -4294967295", "startupTimeoutSeconds"),
+    c("startupTimeoutSeconds = 4294967386", "startupTimeoutSeconds"),
     c('icon = "absent.ico"', "icon"),
     c('icon = "../配布 素材/broken.ico"', ".ico"),
     c('licenseFile = "../配布 素材/utf16.txt"', "UTF-8"),
@@ -370,6 +405,7 @@ check_external_build <- function() {
   writeLines(lines, profile)
   subject$run_tauri <- plain_run
   expect_defaults <- TRUE
+  expected_timeout <- 90L
   real_packages <- stage_packages
   environment(real_packages) <- subject
   subject$stage_packages <- real_packages
@@ -511,6 +547,60 @@ check_entrypoint_collisions <- function() {
   }
 }
 check_entrypoint_collisions()
+
+
+check_windows_resource_names <- function() {
+  root <- tempfile()
+  app <- file.path(root, "app")
+  stopifnot(dir.create(file.path(app, "www"), recursive = TRUE))
+  on.exit(unlink(root, recursive = TRUE))
+  file.create(file.path(app, "app.R"))
+  run <- function(files, dirs = NULL) {
+    stage_app(
+      list(app = app, files = c("app.R", files), emptyDirs = dirs),
+      tempfile(tmpdir = root)
+    )
+  }
+  collision <- function(expr, first, second) {
+    err <- tryCatch(
+      {
+        force(expr)
+        NULL
+      },
+      error = identity
+    )
+    stopifnot(
+      inherits(err, "error"),
+      all(vapply(
+        c(first, second),
+        function(s) grepl(s, conditionMessage(err), fixed = TRUE),
+        FALSE
+      ))
+    )
+  }
+  collision(run(c("www/Images/a", "www/images/b")), "www/Images", "www/images")
+  collision(run("www/Sales", "www/sales"), "www/Sales", "www/sales")
+  for (path in c(
+    "www/NUL.csv",
+    "www/CONOUT$",
+    "www/COM¹.dat",
+    "www/com1 .txt",
+    "www/pic?.svg",
+    "www/name."
+  )) {
+    expect_bundle_error(run(path), "Windows")
+  }
+  if (.Platform$OS.type == "unix") {
+    stopifnot(file.create(file.path(app, "www", c("É.svg", "é.svg"))))
+    collision(run("www"), "www/É.svg", "www/é.svg")
+    file.remove(file.path(app, "www/é.svg"))
+    for (name in c("straße", "strasse", "é", "e\u0301")) {
+      file.create(file.path(app, "www", name))
+    }
+    run("www")
+  }
+}
+check_windows_resource_names()
 
 check_cli_entry <- function() {
   root <- tempfile("engine path with spaces ")

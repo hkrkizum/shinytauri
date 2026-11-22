@@ -110,6 +110,10 @@ fn init_rejects_entrypoint_names_that_collide_on_windows() {
         ["server.R", "SERVER.r"],
         ["www/a.css", "WWW/b.css"],
         ["www/INDEX.html", "www/index.html"],
+        ["www/Sales.csv", "www/sales.csv"],
+        ["www/Images/a.svg", "www/images/b.svg"],
+        ["data/Été.csv", "data/été.csv"],
+        ["www/IMG", "www/img/icon.svg"],
     ] {
         let root = tempdir().unwrap();
         fs::write(root.path().join("app.R"), "").unwrap();
@@ -216,6 +220,8 @@ exec "$@"
         &fake_rig,
         r#"#!/bin/sh
 set -eu
+[ -x "$SHINYTAURI_CLI_EXECUTABLE" ]
+"$SHINYTAURI_CLI_EXECUTABLE" --version > "$PROBE/cli-version"
 case "$1" in
 proj)
   test "$2" = sync && test "$3" = --locked
@@ -237,7 +243,11 @@ esac
     for exe in [&fake_nix, &fake_rig] {
         fs::set_permissions(exe, fs::Permissions::from_mode(0o755)).unwrap()
     }
-    let output = Command::new(env!("CARGO_BIN_EXE_shinytauri"))
+    let copied = bin.join("編集 App CLI");
+    fs::copy(env!("CARGO_BIN_EXE_shinytauri"), &copied).unwrap();
+    let linked = bin.join("リンク cli");
+    std::os::unix::fs::symlink(copied, &linked).unwrap();
+    let output = Command::new(linked)
         .current_dir(root.path())
         .args([
             "build",
@@ -253,6 +263,11 @@ esac
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert!(root.path().join("成果 物/fixture-setup.exe").is_file());
+    assert!(
+        fs::read_to_string(root.path().join("cli-version"))
+            .unwrap()
+            .starts_with("shinytauri ")
+    );
     let logs = fs::read_to_string(root.path().join("shells")).unwrap();
     assert_eq!(logs.lines().count(), 1);
     assert!(!Path::new(logs.trim()).exists());
@@ -284,7 +299,7 @@ fn init_does_not_follow_links_out_of_the_app_or_select_unrelated_config() {
 fn a_failed_environment_restore_stops_the_build_and_cleans_the_engine() {
     use std::os::unix::fs::PermissionsExt;
     let root = tempdir().unwrap();
-    fs::write(root.path().join("shinytauri.toml"), "app fixture").unwrap();
+    fs::write(root.path().join("shinytauri.toml"), "app = '.'").unwrap();
     let rig = root.path().join("rig");
     fs::write(&rig, "#!/bin/sh\npwd >> \"$PROBE\"\nexit 9\n").unwrap();
     fs::set_permissions(&rig, fs::Permissions::from_mode(0o755)).unwrap();
@@ -455,4 +470,30 @@ fn init_selects_the_matching_windows_target_in_existing_rig_locks() {
         fs::read_to_string(app.path().join("rproj.lock")).unwrap(),
         lock
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn init_rejects_unrepresentable_windows_resource_names() {
+    for name in [
+        "CON.txt",
+        "lpt².csv",
+        "com1 .txt",
+        "CONOUT$",
+        "ending.",
+        "space ",
+        "bad?.svg",
+        "tab\t.txt",
+        r"bad\path",
+        "a:b",
+    ] {
+        let root = tempdir().unwrap();
+        fs::create_dir(root.path().join("www")).unwrap();
+        fs::write(root.path().join("app.R"), "").unwrap();
+        fs::write(root.path().join("www").join(name), "").unwrap();
+        let result = cli(root.path(), &["init", "--id", "org.example.invalid"]);
+        assert!(!result.status.success(), "{name:?}: {result:?}");
+        assert!(String::from_utf8_lossy(&result.stderr).contains("Windows"));
+        assert!(!root.path().join("shinytauri.toml").exists());
+    }
 }

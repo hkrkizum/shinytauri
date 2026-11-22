@@ -343,8 +343,19 @@ validate_branding_file <- function(key, path) {
   }
 }
 
-read_bundle <- function(path, for_lock = FALSE) {
+read_bundle <- function(path, for_lock = FALSE, engine = getwd()) {
   spec <- RcppTOML::parseTOML(path)
+  # RcppTOML narrows 64-bit integers and flattens arrays. Read this setting
+  # from the original TOML with the same typed parser used by CLI inspect.
+  spec$startupTimeoutSeconds <- if ("startupTimeoutSeconds" %in% names(spec)) {
+    as.integer(run_bundle_cli(
+      engine,
+      c("read-startup-timeout", absolute_path(path)),
+      capture = TRUE
+    ))
+  } else {
+    90L
+  }
   base <- dirname(absolute_path(path))
   if (!is.null(spec$rVersion)) {
     validate_r_version(spec$rVersion)
@@ -591,7 +602,13 @@ within_path <- function(path, directory) {
   path == directory || startsWith(path, paste0(directory, "/"))
 }
 
-copy_resource <- function(source, destination, directory_only = FALSE) {
+copy_resource <- function(
+  source,
+  destination,
+  relative,
+  check_names,
+  directory_only = FALSE
+) {
   link <- Sys.readlink(source)
   resolved <- absolute_path(source)
   if (
@@ -617,10 +634,15 @@ copy_resource <- function(source, destination, directory_only = FALSE) {
       stop("Unreadable app directory: ", source)
     }
     children <- list.files(source, all.files = TRUE, no.. = TRUE)
-    for (child in children) {
+    child_paths <- if (length(children)) paste(relative, children, sep = "/")
+    check_names(child_paths)
+    for (i in seq_along(children)) {
+      child <- children[[i]]
       copy_resource(
         file.path(source, child),
-        file.path(destination, child)
+        file.path(destination, child),
+        child_paths[[i]],
+        check_names
       )
     }
   } else {
@@ -631,34 +653,83 @@ copy_resource <- function(source, destination, directory_only = FALSE) {
   }
 }
 
-# Files from a case-sensitive checkout must remain distinguishable on Windows.
-check_entry_names <- function(paths) {
-  names <- unique(c(sub("/.*", "", paths), paths))
-  folded <- chartr(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    "abcdefghijklmnopqrstuvwxyz",
-    names
+# The Rust preflight and R build share a locale-independent case table. Record
+# parent directory spellings too: Images/a and images/b collide at the parent.
+windows_resource_names <- function(case_table) {
+  rows <- utils::read.table(
+    case_table,
+    col.names = c("first", "last", "step", "delta")
   )
-  entries <- folded %in%
-    c("app.r", "server.r", "ui.r", "global.r", "www", "www/index.html")
-  names <- names[entries]
-  folded <- folded[entries]
-  clash <- anyDuplicated(folded)
-  if (clash > 0L) {
-    key <- folded[[clash]]
-    stop(
-      "Shiny entry names collide on Windows: ",
-      paste(names[folded == key], collapse = ", ")
-    )
+  upper <- 0:65535
+  for (i in seq_len(nrow(rows))) {
+    codes <- seq.int(rows$first[i], rows$last[i], by = rows$step[i])
+    upper[codes + 1L] <- codes + rows$delta[i]
+  }
+  root <- new.env(parent = emptyenv())
+  function(paths) {
+    for (path in paths) {
+      directory <- root
+      spelling <- ""
+      for (part in strsplit(enc2utf8(path), "/", fixed = TRUE)[[1L]]) {
+        points <- utf8ToInt(part)
+        bmp <- points <= 65535L
+        points[bmp] <- upper[points[bmp] + 1L]
+        folded <- intToUtf8(points)
+        spelling <- if (nzchar(spelling)) {
+          paste(spelling, part, sep = "/")
+        } else {
+          part
+        }
+        stem <- sub(" +$", "", sub("[.].*$", "", folded))
+        if (
+          !length(points) ||
+            any(points <= 31L) ||
+            length(points) + sum(!bmp) > 255L ||
+            grepl('[<>:"\\\\|?*]|[. ]$', part, perl = TRUE) ||
+            folded %in% c("CONIN$", "CONOUT$") ||
+            stem %in% c("CON", "PRN", "AUX", "NUL") ||
+            grepl("^(COM|LPT)[1-9\u00b9\u00b2\u00b3]$", stem, perl = TRUE)
+        ) {
+          stop(
+            "Invalid Windows app resource name: ",
+            encodeString(spelling, quote = '"')
+          )
+        }
+        # R environment keys use the native code page. Numeric UTF-16/BMP
+        # mappings keep different Unicode names distinct even in the C locale.
+        key <- paste(points, collapse = ",")
+        child <- directory[[key]]
+        if (is.null(child)) {
+          child <- new.env(parent = emptyenv())
+          attr(child, "spelling") <- spelling
+          directory[[key]] <- child
+        } else if (attr(child, "spelling") != spelling) {
+          stop(
+            "App resource paths ",
+            encodeString(attr(child, "spelling"), quote = '"'),
+            " and ",
+            encodeString(spelling, quote = '"'),
+            " collide on Windows. Keep one spelling."
+          )
+        }
+        directory <- child
+      }
+    }
   }
 }
 
-stage_app <- function(spec, dest, output = NULL) {
+stage_app <- function(
+  spec,
+  dest,
+  output = NULL,
+  case_table = "scripts/windows-name-case.txt"
+) {
   stopifnot(dir.create(dest, recursive = TRUE))
   dest <- absolute_path(dest)
   app <- absolute_path(spec$app)
   selected <- unique(c(spec$files, spec$emptyDirs))
-  check_entry_names(selected)
+  check_names <- windows_resource_names(case_table)
+  check_names(selected)
   for (relative in selected) {
     source <- file.path(app, relative)
     resolved <- absolute_path(source)
@@ -674,19 +745,11 @@ stage_app <- function(spec, dest, output = NULL) {
     copy_resource(
       source,
       file.path(dest, relative),
+      relative,
+      check_names,
       directory_only = !relative %in% spec$files
     )
   }
-  # A directory selected as a whole may add entries absent from the manifest.
-  root_names <- list.files(dest)
-  www <- root_names[tolower(root_names) == "www"]
-  for (folder in www) {
-    children <- list.files(file.path(dest, folder))
-    if (length(children)) {
-      root_names <- c(root_names, file.path(folder, children))
-    }
-  }
-  check_entry_names(root_names)
   # NSIS installs files. An empty staged leaf needs a file to carry its path.
   for (directory in list.dirs(dest)) {
     if (!length(list.files(directory, all.files = TRUE, no.. = TRUE))) {
@@ -703,6 +766,50 @@ stage_app <- function(spec, dest, output = NULL) {
   if (!any(utils::file_test("-f", entry))) {
     stop("Missing Shiny entry point in files: include app.R or server.R")
   }
+}
+
+# Reuse the installed CLI for checks shared with inspect. Direct builds from a
+# checkout run the same locked CLI through Cargo.
+run_bundle_cli <- function(engine, args, capture = FALSE) {
+  executable <- Sys.getenv("SHINYTAURI_CLI_EXECUTABLE")
+  if (!nzchar(executable)) {
+    executable <- "cargo"
+    args <- c(
+      "run",
+      "--quiet",
+      "--locked",
+      "--manifest-path",
+      file.path(engine, "cli", "Cargo.toml"),
+      "--",
+      args
+    )
+  }
+  if (!capture) {
+    if (system2(executable, shQuote(args)) != 0L) {
+      stop("shinytauri CLI check failed")
+    }
+    return(invisible(NULL))
+  }
+  stderr <- tempfile()
+  on.exit(unlink(stderr))
+  result <- suppressWarnings(system2(
+    executable,
+    shQuote(args),
+    stdout = TRUE,
+    stderr = stderr
+  ))
+  errors <- readLines(stderr, warn = FALSE)
+  if (!is.null(attr(result, "status"))) {
+    stop("shinytauri CLI check failed: ", paste(errors, collapse = "\n"))
+  }
+  if (length(errors)) {
+    message(paste(errors, collapse = "\n"))
+  }
+  result
+}
+
+check_staged_sources <- function(stage, app, engine) {
+  run_bundle_cli(engine, c("check-staged-sources", stage, app))
 }
 
 run_tauri <- function(engine, config, triple, target_dir) {
@@ -789,7 +896,7 @@ publish_installer <- function(
 
 build_windows <- function(profile, output = NULL, engine = getwd()) {
   options(timeout = max(120L, getOption("timeout")))
-  spec <- read_bundle(profile)
+  spec <- read_bundle(profile, engine = engine)
   engine <- absolute_path(engine)
   source(file.path(engine, "scripts/distribution-sources.R"), local = TRUE)
   if (spec$managed || isTRUE(spec$checkMinimal)) {
@@ -834,7 +941,18 @@ build_windows <- function(profile, output = NULL, engine = getwd()) {
   on.exit(unlink(stage, recursive = TRUE), add = TRUE)
   bundle <- prepare_source_bundle(spec, profile, stage, output, cache)
   payload <- file.path(stage, "payload")
-  stage_app(spec, file.path(payload, "app"), output)
+  stage_app(
+    spec,
+    file.path(payload, "app"),
+    output,
+    file.path(engine, "scripts/windows-name-case.txt")
+  )
+  check_staged_sources(file.path(payload, "app"), spec$app, engine)
+  jsonlite::write_json(
+    list(startupTimeoutSeconds = spec$startupTimeoutSeconds),
+    file.path(payload, "startup.json"),
+    auto_unbox = TRUE
+  )
   if (isTRUE(spec$checkMinimal)) {
     check_minimal_imports(file.path(payload, "app"), target)
   }
@@ -935,7 +1053,7 @@ if (sys.nframe() == 0L) {
   engine <- dirname(dirname(normalizePath(script, mustWork = TRUE)))
   if (length(args) == 2L && identical(args[[1L]], "--lock")) {
     source(file.path(engine, "scripts/runtime-deps.R"))
-    lock_windows(read_bundle(args[[2L]], for_lock = TRUE))
+    lock_windows(read_bundle(args[[2L]], for_lock = TRUE, engine = engine))
   } else {
     build_windows(
       if (length(args)) args[[1L]] else file.path(engine, "bundles/rhino.toml"),
