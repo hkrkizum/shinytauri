@@ -65,8 +65,8 @@ foldhash 0.2.0  |  Zlib
 getrandom 0.4.3  |  MIT OR Apache-2.0
   Source: https://static.crates.io/crates/getrandom/getrandom-0.4.3.crate
 
-hashbrown 0.17.1  |  MIT OR Apache-2.0
-  Source: https://static.crates.io/crates/hashbrown/hashbrown-0.17.1.crate
+hashbrown 0.17.2  |  MIT OR Apache-2.0
+  Source: https://static.crates.io/crates/hashbrown/hashbrown-0.17.2.crate
 
 heck 0.5.0  |  MIT OR Apache-2.0
   Source: https://static.crates.io/crates/heck/heck-0.5.0.crate
@@ -500,7 +500,7 @@ cfg-if 1.0.5 / LICENSE-APACHE
 equivalent 1.0.3 / LICENSE-APACHE
 fastrand 2.5.0 / LICENSE-APACHE
 find-msvc-tools 0.1.15 / LICENSE-APACHE
-hashbrown 0.17.1 / LICENSE-APACHE
+hashbrown 0.17.2 / LICENSE-APACHE
 heck 0.5.0 / LICENSE-APACHE
 indexmap 2.14.2 / LICENSE-APACHE
 linux-raw-sys 0.12.1 / LICENSE-APACHE
@@ -1333,7 +1333,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-hashbrown 0.17.1 / LICENSE-MIT
+hashbrown 0.17.2 / LICENSE-MIT
 
 Copyright (c) 2016 Amanieu d'Antras
 
