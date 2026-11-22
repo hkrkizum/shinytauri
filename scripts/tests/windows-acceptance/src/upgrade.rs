@@ -19,6 +19,7 @@ struct Wizard {
     saw_previous_version: bool,
     saw_uninstaller: bool,
     previous_page: Option<(HWND, Vec<String>, String)>,
+    finish_posted: bool,
 }
 
 fn check_button(button: HWND, message: u32) -> Result<usize> {
@@ -73,24 +74,37 @@ impl Wizard {
             )?;
             self.saw_uninstaller = true;
         }
-        for (text, &control) in &buttons {
-            // The offline WebView test will launch the updated application.
-            if text.starts_with("Run shinytauri-smoke-minimal") {
-                check_button(control, BM_SETCHECK)?;
+        self.advance(dialog, primary, &buttons)
+    }
+
+    fn advance(
+        &mut self,
+        dialog: HWND,
+        primary: HWND,
+        buttons: &BTreeMap<String, HWND>,
+    ) -> Result<()> {
+        if self.finish_posted || !buttons.values().any(|&hwnd| hwnd == primary) {
+            return Ok(());
+        }
+        let caption = winui::caption(primary)?;
+        let finish = caption.trim() == "Finish";
+        let page = (dialog, buttons.keys().cloned().collect(), caption);
+        if self.previous_page.as_ref() == Some(&page) {
+            return Ok(());
+        }
+        if finish {
+            // Configure the final page once. The offline WebView test will
+            // launch the application after the installer has exited.
+            for (text, &control) in buttons {
+                if text.starts_with("Run shinytauri-smoke-minimal") {
+                    check_button(control, BM_SETCHECK)?;
+                }
             }
         }
-        if buttons.values().any(|&hwnd| hwnd == primary) {
-            let page = (
-                dialog,
-                buttons.into_keys().collect(),
-                winui::caption(primary)?,
-            );
-            if self.previous_page.as_ref() != Some(&page) {
-                println!("{} {}", winui::caption(dialog)?, page.2);
-                winui::click(primary)?;
-                self.previous_page = Some(page);
-            }
-        }
+        println!("{} {}", winui::caption(dialog)?, page.2);
+        winui::click(primary)?;
+        self.previous_page = Some(page);
+        self.finish_posted = finish;
         Ok(())
     }
 
@@ -110,10 +124,19 @@ impl Wizard {
                 "NSIS timed out on {:?}",
                 self.previous_page
             );
+            // NSIS briefly keeps its final window while destroying its controls.
+            // After clicking Finish, only the actual installer exit matters.
+            if self.finish_posted {
+                thread::sleep(Duration::from_millis(200));
+                continue;
+            }
             // The previous version's uninstall dialog belongs to a child process.
             let mut owners: HashSet<_> = processes::descendants(setup.id())?.into_iter().collect();
             owners.insert(setup.id());
             for window in winui::enum_windows(None) {
+                if self.finish_posted {
+                    break;
+                }
                 if owners.contains(&winui::pid(window)) {
                     match self.visit(window, evidence) {
                         Err(error) if winui::is_transient(&error) => continue,
@@ -136,4 +159,81 @@ pub fn run(setup: &Path, evidence: &Path) -> Result<()> {
         processes::terminate_tree(&mut child)?;
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ptr;
+
+    struct Button(HWND);
+    impl Button {
+        fn new(text: windows_sys::core::PCWSTR, style: u32) -> Result<Self> {
+            let hwnd = unsafe {
+                CreateWindowExW(
+                    0,
+                    windows_sys::w!("Button"),
+                    text,
+                    WS_POPUP | style,
+                    0,
+                    0,
+                    100,
+                    20,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    ptr::null(),
+                )
+            };
+            ensure!(
+                !hwnd.is_null(),
+                "create test button: {}",
+                io::Error::last_os_error()
+            );
+            Ok(Self(hwnd))
+        }
+    }
+    impl Drop for Button {
+        fn drop(&mut self) {
+            unsafe {
+                DestroyWindow(self.0);
+            }
+        }
+    }
+
+    #[test]
+    fn finish_is_clicked_once_and_its_closing_controls_are_left_alone() -> Result<()> {
+        let finish = Button::new(windows_sys::w!("&Finish"), 0)?;
+        let launch = Button::new(
+            windows_sys::w!("Run shinytauri-smoke-minimal"),
+            BS_AUTOCHECKBOX as u32,
+        )?;
+        let mut buttons = BTreeMap::from([
+            ("Finish".into(), finish.0),
+            ("Run shinytauri-smoke-minimal".into(), launch.0),
+        ]);
+        unsafe {
+            SendMessageW(launch.0, BM_SETCHECK, 1, 0);
+        }
+        let mut wizard = Wizard::default();
+        wizard.advance(finish.0, finish.0, &buttons)?;
+        assert_eq!(check_button(launch.0, BM_GETCHECK)?, 0);
+        // NSIS can change the apparent page as its controls get dismantled.
+        buttons.insert("another closing button".into(), launch.0);
+        unsafe {
+            SendMessageW(launch.0, BM_SETCHECK, 1, 0);
+        }
+        wizard.advance(finish.0, finish.0, &buttons)?;
+        assert_eq!(check_button(launch.0, BM_GETCHECK)?, 1);
+        let mut message = MSG::default();
+        assert_ne!(
+            unsafe { PeekMessageW(&mut message, finish.0, BM_CLICK, BM_CLICK, PM_REMOVE) },
+            0
+        );
+        assert_eq!(
+            unsafe { PeekMessageW(&mut message, finish.0, BM_CLICK, BM_CLICK, PM_REMOVE) },
+            0
+        );
+        Ok(())
+    }
 }
