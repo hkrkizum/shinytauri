@@ -5,6 +5,7 @@ check_portable_runtime <- function() {
   on.exit(unlink(root, recursive = TRUE))
   subject <- new.env(parent = globalenv())
   sys.source("scripts/build-windows.R", subject)
+  subject$archive_cache_dir <- function() file.path(root, "cache")
   version <- "4.5.3"
   asset <- "portable-r-4.5.3-win-x64.zip"
   url <- paste0(
@@ -111,7 +112,7 @@ check_windows_selection <- function() {
   path <- tempfile()
   on.exit(unlink(path))
   # A rig lock can contain a Linux target and multiple Windows R versions.
-  base <- readLines("bundles/minimal/rproj.lock")
+  base <- legacy_minimal_lock()
   stanza <- base[seq.int(match("[[targets]]", base), length(base))]
   other <- sub(
     'r_version = "4.6.2"',

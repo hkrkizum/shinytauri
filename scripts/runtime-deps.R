@@ -308,8 +308,9 @@ lock_windows <- function(spec) {
     stop("Could not resolve Windows CRAN binary versions.")
   }
   target <- windows_target("rproj.lock", r_version = version)
+  check_resolved_versions(req, target)
+  pins <- pin_packages(target, dir)
   current <- runtime_requirements(spec)
-  check_resolved_versions(current, target)
   if (
     !identical(
       fingerprint,
@@ -340,13 +341,25 @@ lock_windows <- function(spec) {
   stopifnot(file.copy("rproj.lock", staged))
   cat(
     sprintf(
-      '\n[shinytauri]\ninput_sha256 = "%s"\nruntime_sha256 = "%s"\n',
+      '\n[shinytauri]\ninput_sha256 = "%s"\nruntime_sha256 = "%s"\narchive_format = 1\n\n[shinytauri.package_sha256]\n',
       fingerprint,
       digest
     ),
     file = staged,
     append = TRUE
   )
+  # rig emits standard R package names; quoted keys keep dotted names literal TOML keys.
+  if (!all(grepl(paste0("^", package_pattern, "$"), names(pins)))) {
+    stop("Invalid package name in Windows lock.")
+  }
+  pins <- pins[order(names(pins), method = "radix")]
+  cat(
+    sprintf('"%s" = "%s"\n', names(pins), pins),
+    sep = "",
+    file = staged,
+    append = TRUE
+  )
+  windows_target(staged, r_version = version)
   stopifnot(file.rename(staged, spec$lock))
   message("Windows runtime lock: ", spec$lock)
 }
