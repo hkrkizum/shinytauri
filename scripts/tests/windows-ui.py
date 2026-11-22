@@ -27,6 +27,12 @@ def exercise(kind, page, evidence):
         assert page.locator("#total").evaluate(
             "el => getComputedStyle(el).fontVariantNumeric"
         ) == "tabular-nums"
+    elif kind == "upgrade":
+        expect(page.get_by_role("heading", name="Updated counter 0.2.0")).to_be_visible(timeout=30000)
+        expect(page.locator("#saved")).to_have_text("saved with version 0.1.0")
+        expect(page.locator("#total")).to_have_text("Updated count: 0")
+        page.locator("#count").click()
+        expect(page.locator("#total")).to_have_text("Updated count: 1")
     else:
         expect(page.locator("#app-counter-count")).to_have_text("カウント：0", timeout=30000)
         page.locator("#app-counter-increment").click()
@@ -127,7 +133,8 @@ def check(kind, exe, evidence, gate=None, failed=False):
     )
     if gate is not None:
         env["SHINYTAURI_SMOKE_GATE"] = str(gate)
-    logs = Path(env["LOCALAPPDATA"]) / f"org.example.{kind}" / "logs"
+    identifier = "org.example.rhino" if kind == "rhino" else "org.example.minimal"
+    logs = Path(env["LOCALAPPDATA"]) / identifier / "logs"
     new_run = "intentional-failure" if failed else kind
     previous_logs = set(logs.glob("*"))
     app = subprocess.Popen([exe], cwd=evidence, env=env)
@@ -197,7 +204,7 @@ def check(kind, exe, evidence, gate=None, failed=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=("minimal", "rhino"))
+    parser.add_argument("kind", choices=("minimal", "rhino", "upgrade"))
     parser.add_argument("exe", type=Path)
     parser.add_argument("evidence", type=Path)
     args = parser.parse_args()
