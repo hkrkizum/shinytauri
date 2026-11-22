@@ -11,6 +11,32 @@ use std::{
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 const MAX_HEADERS: usize = 32 * 1024;
 
+pub fn startup_timeout(payload: &Path) -> io::Result<u32> {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Settings {
+        startup_timeout_seconds: i32,
+    }
+    let file = match File::open(payload.join("startup.json")) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(90),
+        Err(error) => return Err(error),
+    };
+    let settings: Settings = serde_json::from_reader(file).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Invalid offline/startup.json: {e}"),
+        )
+    })?;
+    if settings.startup_timeout_seconds <= 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Expected a positive startupTimeoutSeconds in offline/startup.json",
+        ));
+    }
+    Ok(settings.startup_timeout_seconds as u32)
+}
+
 fn remaining(deadline: Instant) -> io::Result<Duration> {
     let left = deadline.saturating_duration_since(Instant::now());
     if left.is_zero() {
@@ -194,6 +220,47 @@ mod tests {
             let _ = self.0.kill();
             let _ = self.0.wait();
         }
+    }
+
+    #[test]
+    fn reads_configured_startup_timeout_and_keeps_the_legacy_default() {
+        let payload = tempfile::tempdir().unwrap();
+        let file = payload.path().join("startup.json");
+        assert_eq!(startup_timeout(payload.path()).unwrap(), 90);
+        for (value, expected) in [("1", 1), ("120", 120), ("2147483647", i32::MAX as u32)] {
+            fs::write(&file, format!(r#"{{"startupTimeoutSeconds":{value}}}"#)).unwrap();
+            assert_eq!(startup_timeout(payload.path()).unwrap(), expected);
+        }
+        for value in ["0", "-1", "1.1", "[]", "4294967386", "null"] {
+            fs::write(&file, format!(r#"{{"startupTimeoutSeconds":{value}}}"#)).unwrap();
+            assert!(startup_timeout(payload.path()).is_err());
+        }
+        fs::write(&file, "{}").unwrap();
+        assert!(startup_timeout(payload.path()).is_err());
+    }
+
+    #[test]
+    fn a_delayed_port_hits_a_short_deadline_and_succeeds_with_more_time() {
+        let mut child = Running::new();
+        let temp = tempfile::tempdir().unwrap();
+        let ready = temp.path().join("ready");
+        let short = Instant::now() + Duration::from_millis(50);
+        assert_eq!(
+            wait_for_port(&ready, &mut child.0, short)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::TimedOut
+        );
+        let port_file = ready.clone();
+        let writer = thread::spawn(move || {
+            thread::sleep(POLL_INTERVAL);
+            let pending = port_file.with_extension("tmp");
+            fs::write(&pending, "http://127.0.0.1:4567").unwrap();
+            fs::rename(pending, port_file).unwrap();
+        });
+        let longer = Instant::now() + Duration::from_secs(3);
+        assert_eq!(wait_for_port(&ready, &mut child.0, longer).unwrap(), 4567);
+        writer.join().unwrap();
     }
 
     #[test]

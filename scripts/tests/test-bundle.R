@@ -229,6 +229,7 @@ check_external_build <- function() {
     run_bundle_cli(checkout, args, capture)
   }
   expect_defaults <- TRUE
+  expected_timeout <- 90L
   source_sha <- NULL
   subject$run_tauri <- function(engine, config, triple, target_dir) {
     contents <- jsonlite::read_json(config)
@@ -249,6 +250,8 @@ check_external_build <- function() {
       win$height == 600L
     )
     payload <- file.path(engine, "src-tauri", names(contents$bundle$resources))
+    startup <- jsonlite::read_json(file.path(payload, "startup.json"))
+    stopifnot(identical(startup$startupTimeoutSeconds, expected_timeout))
     manifest <- jsonlite::read_json(file.path(
       payload,
       "notices/components.json"
@@ -347,11 +350,13 @@ check_external_build <- function() {
   writeLines("利用規約 A", license, useBytes = TRUE)
   custom <- c(
     lines,
+    'startupTimeoutSeconds = 0x78',
     'publisher = "販売 株式会社"',
     'icon = "../配布 素材/製品.ICO"',
     'licenseFile = "../配布 素材/利用規約.txt"'
   )
   writeLines(custom, profile, useBytes = TRUE)
+  expected_timeout <- 120L
   expect_defaults <- FALSE
   plain_run <- subject$run_tauri
   subject$run_tauri <- function(engine, config, triple, target_dir) {
@@ -380,6 +385,13 @@ check_external_build <- function() {
   writeLines("plain text", file.path(branding, "broken.ico"))
   writeBin(as.raw(c(0xff, 0xfe, 0x41, 0x00)), file.path(branding, "utf16.txt"))
   for (bad in list(
+    c("startupTimeoutSeconds = 0", "startupTimeoutSeconds"),
+    c("startupTimeoutSeconds = 1.0", "startupTimeoutSeconds"),
+    c("startupTimeoutSeconds = [1]", "startupTimeoutSeconds"),
+    c("startupTimeoutSeconds = []", "startupTimeoutSeconds"),
+    c("startupTimeoutSeconds = 2147483648", "startupTimeoutSeconds"),
+    c("startupTimeoutSeconds = -4294967295", "startupTimeoutSeconds"),
+    c("startupTimeoutSeconds = 4294967386", "startupTimeoutSeconds"),
     c('icon = "absent.ico"', "icon"),
     c('icon = "../配布 素材/broken.ico"', ".ico"),
     c('licenseFile = "../配布 素材/utf16.txt"', "UTF-8"),
@@ -393,6 +405,7 @@ check_external_build <- function() {
   writeLines(lines, profile)
   subject$run_tauri <- plain_run
   expect_defaults <- TRUE
+  expected_timeout <- 90L
   real_packages <- stage_packages
   environment(real_packages) <- subject
   subject$stage_packages <- real_packages

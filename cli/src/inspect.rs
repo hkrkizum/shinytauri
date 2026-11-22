@@ -1,4 +1,4 @@
-use crate::{Result, init, parse_r_version};
+use crate::{Result, build, init, parse_r_version};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -318,15 +318,8 @@ pub(crate) fn staged_sources(stage: &Path, original: &Path) -> Result<()> {
 pub(crate) fn report(config: PathBuf) -> Result<()> {
     let config = config.canonicalize()?;
     let base = config.parent().unwrap();
-    let spec: Table = fs::read_to_string(&config)?
-        .parse()
-        .map_err(|e: toml::de::Error| {
-            format!(
-                "Invalid bundle config {}: {}",
-                config.display(),
-                e.message()
-            )
-        })?;
+    let spec = build::read_config(&config)?;
+    let timeout = build::startup_timeout(&spec)?;
     metadata(&spec)?;
     let app_path = base.join(string(&spec, "app")?.ok_or("Missing app directory in config")?);
     if !app_path.is_dir() {
@@ -386,6 +379,7 @@ pub(crate) fn report(config: PathBuf) -> Result<()> {
     crate::sources::check(&app, &app, &inventory.files)?;
     installer_inputs(&spec, base)?;
     runtime(&spec, base)?;
+    println!("Startup timeout: {timeout} seconds");
     if !inventory.missing.is_empty() {
         return Err("Some configured app resources are missing".into());
     }

@@ -299,7 +299,7 @@ fn init_does_not_follow_links_out_of_the_app_or_select_unrelated_config() {
 fn a_failed_environment_restore_stops_the_build_and_cleans_the_engine() {
     use std::os::unix::fs::PermissionsExt;
     let root = tempdir().unwrap();
-    fs::write(root.path().join("shinytauri.toml"), "app fixture").unwrap();
+    fs::write(root.path().join("shinytauri.toml"), "app = '.'").unwrap();
     let rig = root.path().join("rig");
     fs::write(&rig, "#!/bin/sh\npwd >> \"$PROBE\"\nexit 9\n").unwrap();
     fs::set_permissions(&rig, fs::Permissions::from_mode(0o755)).unwrap();

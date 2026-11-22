@@ -26,6 +26,8 @@ struct Cli {
 enum Commands {
     /// Check the build machine and show how to install missing tools.
     Doctor,
+    #[command(hide = true)]
+    ReadStartupTimeout { config: PathBuf },
     /// Create shinytauri.toml in an existing Shiny app directory.
     Init {
         #[arg(default_value = ".")]
@@ -93,6 +95,9 @@ fn main() -> ExitCode {
     let result = match Cli::parse().command {
         Commands::Doctor => doctor::run(),
         Commands::CheckStagedSources { stage, app } => inspect::staged_sources(&stage, &app),
+        Commands::ReadStartupTimeout { config } => build::read_config(&config)
+            .and_then(|spec| build::startup_timeout(&spec))
+            .map(|seconds| println!("{seconds}")),
         Commands::Init {
             app,
             id,
