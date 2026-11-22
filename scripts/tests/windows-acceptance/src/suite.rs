@@ -187,7 +187,7 @@ fn check_update(
     ensure!(obsolete.is_file(), "Missing v1 stylesheet before upgrade");
     let note = runner_path("LOCALAPPDATA")?.join("org.example.minimal/note.txt");
     let unmanaged = old.directory.join("user-note.txt");
-    const TEXT: &str = "saved with version 0.1.0";
+    const TEXT: &str = "saved with version 0.1.0\r\n";
     for file in [&note, &unmanaged] {
         fs::write(file, TEXT)?;
     }
