@@ -15,6 +15,9 @@ clap     = { features = ["derive"], version = "4.5" }
 tempfile = "3"
 toml     = "1"
 
+[target.'cfg(windows)'.dependencies]
+find-msvc-tools = "0.1.15"
+
 [profile.dist]
 inherits = "release"
 lto      = "thin"

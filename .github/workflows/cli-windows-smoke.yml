@@ -107,6 +107,7 @@ jobs:
             Copy-Item 'scripts/tests/fixtures/branding' (Join-Path $app '配布 素材') -Recurse
           }
           Set-Location $caller
+          & $cli doctor
           if ($env:FIXTURE -eq 'minimal') {
             & $cli init $app --id org.example.minimal --r-version 4.5.3
             & $cli lock $app
