@@ -64,9 +64,13 @@ pub(crate) fn execute(app: Option<PathBuf>, config: Option<PathBuf>, action: Act
     }
     let engine = scratch.tempdir()?;
     template::extract(engine.path())?;
+    let executable = env::current_exe()?;
     let context = |program: &str| {
         let mut process = Command::new(program);
-        process.current_dir(engine.path()).env("RIG_MODE", "user");
+        process
+            .current_dir(engine.path())
+            .env("RIG_MODE", "user")
+            .env("SHINYTAURI_CLI_EXECUTABLE", &executable);
         process
     };
     if cfg!(target_os = "linux")

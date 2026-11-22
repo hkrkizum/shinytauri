@@ -220,6 +220,8 @@ exec "$@"
         &fake_rig,
         r#"#!/bin/sh
 set -eu
+[ -x "$SHINYTAURI_CLI_EXECUTABLE" ]
+"$SHINYTAURI_CLI_EXECUTABLE" --version > "$PROBE/cli-version"
 case "$1" in
 proj)
   test "$2" = sync && test "$3" = --locked
@@ -241,7 +243,11 @@ esac
     for exe in [&fake_nix, &fake_rig] {
         fs::set_permissions(exe, fs::Permissions::from_mode(0o755)).unwrap()
     }
-    let output = Command::new(env!("CARGO_BIN_EXE_shinytauri"))
+    let copied = bin.join("編集 App CLI");
+    fs::copy(env!("CARGO_BIN_EXE_shinytauri"), &copied).unwrap();
+    let linked = bin.join("リンク cli");
+    std::os::unix::fs::symlink(copied, &linked).unwrap();
+    let output = Command::new(linked)
         .current_dir(root.path())
         .args([
             "build",
@@ -257,6 +263,11 @@ esac
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert!(root.path().join("成果 物/fixture-setup.exe").is_file());
+    assert!(
+        fs::read_to_string(root.path().join("cli-version"))
+            .unwrap()
+            .starts_with("shinytauri ")
+    );
     let logs = fs::read_to_string(root.path().join("shells")).unwrap();
     assert_eq!(logs.lines().count(), 1);
     assert!(!Path::new(logs.trim()).exists());

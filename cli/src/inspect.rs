@@ -96,7 +96,7 @@ struct Inventory {
     missing: BTreeSet<String>,
 }
 
-fn is_link(meta: &fs::Metadata) -> bool {
+pub(crate) fn is_link(meta: &fs::Metadata) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
@@ -301,6 +301,20 @@ fn runtime(spec: &Table, base: &Path) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn staged_sources(stage: &Path, original: &Path) -> Result<()> {
+    let mut inventory = Inventory::default();
+    for entry in fs::read_dir(stage)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        inventory.entry(
+            stage,
+            name.to_str().ok_or("App resources must have UTF-8 names")?,
+            false,
+        )?;
+    }
+    crate::sources::check(stage, original, &inventory.files)
+}
+
 pub(crate) fn report(config: PathBuf) -> Result<()> {
     let config = config.canonicalize()?;
     let base = config.parent().unwrap();
@@ -369,6 +383,7 @@ pub(crate) fn report(config: PathBuf) -> Result<()> {
         "Missing entries",
         inventory.missing.iter().map(String::as_str),
     );
+    crate::sources::check(&app, &app, &inventory.files)?;
     installer_inputs(&spec, base)?;
     runtime(&spec, base)?;
     if !inventory.missing.is_empty() {

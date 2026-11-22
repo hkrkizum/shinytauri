@@ -11,9 +11,11 @@ name = "shinytauri"
 path = "src/main.rs"
 
 [dependencies]
-clap     = { features = ["derive"], version = "4.5" }
-tempfile = "3"
-toml     = "1"
+clap          = { features = ["derive"], version = "4.5" }
+tempfile      = "3"
+toml          = "1"
+tree-sitter   = "0.27"
+tree-sitter-r = "1.3"
 
 [target.'cfg(windows)'.dependencies]
 find-msvc-tools = "0.1.15"
