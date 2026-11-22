@@ -321,7 +321,7 @@ pub(crate) fn report(config: PathBuf) -> Result<()> {
     let app = app_path.canonicalize()?;
     let files = app_paths(&spec, "files")?;
     let empty_dirs = app_paths(&spec, "emptyDirs")?;
-    init::check_entry_names(files.iter().chain(&empty_dirs).copied())?;
+    crate::windows_names::check(files.iter().chain(&empty_dirs).copied())?;
     let mut inventory = Inventory::default();
     for relative in files {
         inventory.entry(&app, relative, false)?;
@@ -330,7 +330,7 @@ pub(crate) fn report(config: PathBuf) -> Result<()> {
         inventory.entry(&app, relative, true)?;
     }
 
-    init::check_entry_names(
+    crate::windows_names::check(
         inventory
             .files
             .iter()
