@@ -1,6 +1,7 @@
 """Drive the standard NSIS upgrade wizard and preserve the user's app data."""
 
 import argparse
+import ctypes
 import subprocess
 import time
 from pathlib import Path
@@ -34,12 +35,32 @@ def control_text(hwnd):
     return win32gui.GetWindowText(hwnd).replace("&", "")
 
 
-def capture(window, path):
-    # Capture the desktop region so the wizard's child controls are visible.
-    ImageGrab.grab(bbox=win32gui.GetWindowRect(window), all_screens=True).save(path)
+def capture(window, choice, path):
+    # A button can already have its correct caption and state before Windows
+    # paints its text. Save the composited screen once the label is visible.
+    deadline = time.monotonic() + 8
+    while time.monotonic() < deadline:
+        win32gui.RedrawWindow(
+            window, None, 0, win32con.RDW_UPDATENOW | win32con.RDW_ALLCHILDREN | win32con.RDW_INVALIDATE
+        )
+        rect = win32gui.GetWindowRect(window)
+        left, top, right, bottom = win32gui.GetWindowRect(choice)
+        image = ImageGrab.grab(bbox=rect, all_screens=True)
+        # Exclude the radio/checkbox glyph and the outer border.
+        label = image.crop((
+            left - rect[0] + bottom - top, top - rect[1] + 2,
+            right - rect[0] - 2, bottom - rect[1] - 2,
+        )).convert("RGB")
+        if any(light - dark > 32 for dark, light in label.getextrema()):
+            image.save(path)
+            return
+        time.sleep(0.1)
+    raise TimeoutError(f"NSIS did not paint {control_text(choice)!r}")
 
 
 def upgrade(setup, evidence, timeout=240):
+    # GetWindowRect and ImageGrab must use the same physical pixels.
+    ctypes.windll.user32.SetProcessDPIAware()
     installer = subprocess.Popen([setup])
     process = psutil.Process(installer.pid)
     saw_previous_version = False
@@ -72,12 +93,12 @@ def upgrade(setup, evidence, timeout=240):
                     if "Uninstall before installing" in buttons and not saw_previous_version:
                         choice = buttons["Uninstall before installing"]
                         assert win32gui.SendMessage(choice, win32con.BM_GETCHECK, 0, 0) == 1, buttons
-                        capture(window, evidence / "upgrade-choice.png")
+                        capture(window, choice, evidence / "upgrade-choice.png")
                         saw_previous_version = True
                     if "Delete the application data" in buttons and not saw_uninstaller:
                         choice = buttons["Delete the application data"]
                         assert win32gui.SendMessage(choice, win32con.BM_GETCHECK, 0, 0) == 0, buttons
-                        capture(window, evidence / "upgrade-keep-data.png")
+                        capture(window, choice, evidence / "upgrade-keep-data.png")
                         saw_uninstaller = True
                     for label, button in buttons.items():
                         if label.startswith("Run shinytauri-smoke-minimal"):
