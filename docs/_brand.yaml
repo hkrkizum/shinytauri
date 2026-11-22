@@ -1,0 +1,14 @@
+color:
+  palette:
+    lancet-blue: "#00468b"
+    lancet-red: "#ed0000"
+    ink: "#161b21"
+    gray: "#505a66"
+    paper: "#f3f5f7"
+  foreground: ink
+  background: white
+  primary: lancet-blue
+  danger: lancet-red
+  secondary: gray
+  light: paper
+  dark: ink

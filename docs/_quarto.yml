@@ -3,6 +3,7 @@ project:
   output-dir: _site
 
 lang: ja
+brand: _brand.yaml
 
 website:
   title: shinytauri
@@ -18,6 +19,8 @@ website:
     title: shinytauri
     logo: images/shinytauri.svg
     logo-alt: shinytauri の六角形ロゴ
+    background: light
+    foreground: dark
     left:
       - text: CLI マニュアル
         href: index.qmd
@@ -41,7 +44,7 @@ website:
 
 format:
   html:
-    theme: cosmo
+    theme: brand
     toc: true
     code-copy: true
     link-external-icon: false

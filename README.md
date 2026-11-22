@@ -4,9 +4,9 @@ shinytauri は R の [Shiny](https://github.com/rstudio/shiny) アプリを Wind
 
 [利用マニュアル](https://hkrkizum.github.io/shinytauri/) · [リリース](https://github.com/hkrkizum/shinytauri/releases) · [開発に参加する](docs/development.qmd)
 
-![Windows にインストールした Rhino デモのレポート画面](docs/images/rhino-windows.png)
+![青い「1 を足す」ボタンと現在のカウントを表示した最小 Shiny アプリ](docs/images/minimal-counter.png)
 
-Rhino デモではサイコロの集計結果を絞り込み、レポートを HTML で保存できる。[デモを動かす](docs/demo.qmd)
+`examples/minimal/` は Shiny のカウンターアプリである。付属の配布設定で Windows 用インストーラーを作成できる。[サンプルアプリを動かす](docs/demo.qmd)
 
 ## インストール
 

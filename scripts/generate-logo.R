@@ -1,10 +1,10 @@
 # Run from the repository root. The SVG artwork is licensed CC BY 4.0.
 library(ggplot2)
 
-navy <- "#182C3C"
-cream <- "#FFF5DE"
-teal <- "#14766B"
-accent <- "#D37848"
+blue <- "#00468B"
+red <- "#ED0000"
+ink <- "#161B21"
+paper <- "#F3F5F7"
 
 radius <- 100
 angles <- pi / 180 * seq(30, 330, by = 60)
@@ -21,43 +21,43 @@ plot_line <- data.frame(
 )
 
 logo <- ggplot() +
-  geom_polygon(aes(x, y), data = hex, fill = navy) +
+  geom_polygon(aes(x, y), data = hex, fill = blue) +
   geom_polygon(
     aes(x, y),
     data = rim,
     fill = NA,
-    colour = "#719E9B",
+    colour = "#A3BCD3",
     linewidth = 0.5
   ) +
-  geom_polygon(aes(x, y), data = window, fill = cream) +
+  geom_polygon(aes(x, y), data = window, fill = paper) +
   annotate(
     "segment",
     x = -65,
     xend = 65,
     y = 43,
     yend = 43,
-    colour = "#BBC7BB",
+    colour = "#C6CFD9",
     linewidth = 0.5
   ) +
-  annotate("point", x = c(-54, -45, -36), y = 50.5, colour = teal, size = 1.1) +
+  annotate("point", x = c(-54, -45, -36), y = 50.5, colour = ink, size = 1.1) +
   annotate(
     "segment",
     x = -48,
     xend = 51,
     y = 1,
     yend = 1,
-    colour = "#BBC7BB",
+    colour = "#C6CFD9",
     linewidth = 0.45
   ) +
   geom_path(
     aes(x, y),
     data = plot_line,
-    colour = teal,
+    colour = blue,
     linewidth = 1.6,
     lineend = "round",
     linejoin = "round"
   ) +
-  annotate("point", x = 48, y = 36, colour = accent, size = 2.9) +
+  annotate("point", x = 48, y = 36, colour = red, size = 2.9) +
   annotate(
     "text",
     x = 0,
@@ -66,7 +66,7 @@ logo <- ggplot() +
     family = "Inter",
     fontface = "bold",
     size = 7.5,
-    colour = cream
+    colour = paper
   ) +
   coord_fixed(xlim = c(-89, 89), ylim = c(-102, 102), expand = FALSE) +
   theme_void() +
