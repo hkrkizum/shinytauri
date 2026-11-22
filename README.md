@@ -1,6 +1,6 @@
 # shinytauri
 
-shinytauri は R の Shiny アプリを Windows x64 用のインストーラーにまとめる CLI である。既存のプロジェクトで実行すると、アプリ、ポータブル R、実行に使う R パッケージを同梱した `*-setup.exe` ができる。配布先では Tauri のウィンドウにアプリが開く。
+shinytauri は R の [Shiny](https://github.com/rstudio/shiny) アプリを Windows x64 用のインストーラーにまとめる CLI である。既存のプロジェクトで実行すると、アプリ、ポータブル R、実行に使う R パッケージを同梱した `*-setup.exe` ができる。配布先では [Tauri®](https://github.com/tauri-apps/tauri) のウィンドウにアプリが開く。
 
 [利用マニュアル](https://hkrkizum.github.io/shinytauri/) · [リリース](https://github.com/hkrkizum/shinytauri/releases) · [開発に参加する](docs/development.qmd)
 
@@ -36,6 +36,12 @@ shinytauri build .
 
 動くアプリのコードから試すには[はじめてのビルド](docs/index.qmd)、同梱するファイルや製品名を変えるには[配布設定のリファレンス](docs/configuration.qmd)を参照する。
 
+## 謝辞
+
+ポータブル R とアプリに必要な R パッケージをビルド時にまとめ、配布先でそのまま使えるようにする設計は、James Joseph Balamuta による [shinyelectron](https://github.com/coatless-rpkg/shinyelectron) の配布方式から着想を得た。
+
 ## ライセンス
 
-[MIT License](LICENSE)
+shinytauri 自身のコードには [MIT License](LICENSE) が適用される。CLI が利用するライブラリや、生成したインストーラーに含まれる R、パッケージ、アプリの素材には、それぞれのライセンスが適用される。アプリを配布するときは、`shinytauri.toml` の `icon` に自分が配布できる `.ico` を指定する。[CLI 0.2.1 のライセンス表示](https://hkrkizum.github.io/shinytauri/development.html#cli-notices)・[インストーラーの再配布](https://hkrkizum.github.io/shinytauri/distribution.html#redistribution)
+
+shinytauri は独立したプロジェクトである。TAURI は The Tauri Programme within the Commons Conservancy の登録商標である。[Tauri の商標ガイドライン](https://v2.tauri.app/about/trademark/)
