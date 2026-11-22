@@ -63,6 +63,20 @@ quarto = false
 
 Rhino が起動時に参照する `app/static/` など、空でも必要な場所は `emptyDirs = ["app/static"]` で残せる。ビルドスクリプトが配布物のディレクトリを作るため、アプリにダミーファイルを追加する必要はない。ファイルのパスは区切り文字に `/` を使う。配布対象にはアプリの外へ出るパスやシンボリックリンクを指定できない。
 
+## ビルド前に配布対象を確認する
+
+アプリのディレクトリで次を実行する。R や Nix の起動、パッケージの取得は不要である。
+
+```sh
+shinytauri inspect
+```
+
+別の場所からは `shinytauri inspect ./my-app` を使う。設定が別ファイルなら、`shinytauri inspect --config packaging/bundle.toml` を使う。`app` と `lock` はその設定ファイルを基準に解決する。
+
+`Included files` は配布するファイル、`Empty directories` は中身を配布せずディレクトリだけを用意する場所である。`Not included (init candidates)` には、現在の `init` の探索範囲にあって配布対象に含まれないものが並ぶ。追加した CSS や画像を配布したい場合は、対象のパスを `files` に追記する。
+
+`Missing entries` にパスが出たら、移動したファイルのパスを設定で直すか、削除済みの項目を設定から外す。配布対象やロックが欠けているとき、設定が不正なときは終了コードが 1 になる。未登録の候補があるだけなら 0 である。`Windows R` と `Main packages` は、ロックが指定する Windows 向け R のバージョンと、`main` グループのパッケージ数を示す。依存定義とロックの照合や配布パッケージの取得はビルド時に行う。
+
 ## Quarto を使うアプリ
 
 `quarto = true` を設定すると、Quarto CLI 1.11.9 が `offline/quarto/` に入る。アプリは環境変数 `SHINYTAURI_QUARTO` から実行ファイルの場所を取得できる。Quarto 文書やテンプレートは `files` に、`knitr` など実行時に使う R パッケージは配布用の依存定義に含める。設定例と動作は[同梱の Rhino デモ](demo.qmd)を参照する。

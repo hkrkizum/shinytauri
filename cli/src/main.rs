@@ -1,5 +1,6 @@
 mod build;
 mod init;
+mod inspect;
 mod template;
 
 use clap::{Parser, Subcommand};
@@ -36,6 +37,15 @@ enum Commands {
     },
     /// Resolve Windows runtime dependencies and write the reviewable Windows lock.
     Lock {
+        /// Directory containing shinytauri.toml (defaults to the current directory).
+        #[arg(conflicts_with = "config")]
+        app: Option<PathBuf>,
+        /// Explicit path to a bundle TOML, relative to the current directory.
+        #[arg(long)]
+        config: Option<PathBuf>,
+    },
+    /// Report the app resources and locked Windows runtime without building.
+    Inspect {
         /// Directory containing shinytauri.toml (defaults to the current directory).
         #[arg(conflicts_with = "config")]
         app: Option<PathBuf>,
@@ -81,6 +91,9 @@ fn main() -> ExitCode {
             r_version,
         } => init::initialize(&app, &id, packages, r_version),
         Commands::Lock { app, config } => build::execute(app, config, build::Action::Lock),
+        Commands::Inspect { app, config } => {
+            build::config_path(app, config).and_then(inspect::report)
+        }
         Commands::Build {
             app,
             config,
