@@ -162,6 +162,37 @@ stage_packages <- function(target, stage, payload) {
   )
 }
 
+validate_branding_file <- function(key, path) {
+  if (!utils::file_test("-f", path) || file.size(path) == 0) {
+    stop("Expected a nonempty file for ", key, ": ", path)
+  }
+  if (key == "icon") {
+    header <- readBin(
+      path,
+      integer(),
+      n = 3L,
+      size = 2L,
+      signed = FALSE,
+      endian = "little"
+    )
+    if (
+      tolower(tools::file_ext(path)) != "ico" ||
+        length(header) != 3L ||
+        header[1L] != 0L ||
+        header[2L] != 1L ||
+        header[3L] == 0L ||
+        file.size(path) <= 6L + 16L * header[3L]
+    ) {
+      stop("Expected a Windows .ico file for icon: ", path)
+    }
+  } else {
+    content <- readBin(path, raw(), n = file.size(path))
+    if (any(content == as.raw(0)) || !validUTF8(rawToChar(content))) {
+      stop("Expected UTF-8 text for licenseFile: ", path)
+    }
+  }
+}
+
 read_bundle <- function(path, for_lock = FALSE) {
   spec <- RcppTOML::parseTOML(path)
   base <- dirname(absolute_path(path))
@@ -175,7 +206,10 @@ read_bundle <- function(path, for_lock = FALSE) {
   if (spec$managed && !identical(spec$lock, ".shinytauri/windows.lock")) {
     stop("For managed dependencies set lock = \".shinytauri/windows.lock\".")
   }
-  for (key in intersect(c("app", "lock", "dependencyFile"), names(spec))) {
+  for (key in intersect(
+    c("app", "lock", "dependencyFile", "icon", "licenseFile"),
+    names(spec)
+  )) {
     value <- spec[[key]]
     if (!is.character(value) || length(value) != 1L || !nzchar(value)) {
       stop("Missing ", key, " in ", path)
@@ -184,6 +218,9 @@ read_bundle <- function(path, for_lock = FALSE) {
       value
     } else {
       file.path(base, value)
+    }
+    if (key %in% c("icon", "licenseFile")) {
+      validate_branding_file(key, path_value)
     }
     if (key == "lock" && spec$managed) {
       spec$lock <- path_value
@@ -243,7 +280,7 @@ read_bundle <- function(path, for_lock = FALSE) {
     stop("Expected a boolean for quarto in ", path)
   }
   for (key in intersect(
-    c("productName", "identifier", "version", "title"),
+    c("productName", "identifier", "version", "title", "publisher"),
     names(spec)
   )) {
     value <- spec[[key]]
@@ -576,6 +613,19 @@ build_windows <- function(profile, output = NULL, engine = getwd()) {
   )
   config <- file.path(stage, "bundle.json")
   settings <- list(bundle = list(resources = resources))
+  settings$bundle$publisher <- spec[["publisher"]]
+  # Stable engine-relative names work with windres, NSIS and Cargo on both hosts.
+  stage_path <- file.path("target", basename(stage))
+  if (!is.null(spec[["icon"]])) {
+    stopifnot(file.copy(spec[["icon"]], file.path(stage, "app.ico")))
+    icon <- file.path(stage_path, "app.ico")
+    settings$bundle$icon <- list(icon)
+    settings$bundle$windows <- list(nsis = list(installerIcon = icon))
+  }
+  if (!is.null(spec[["licenseFile"]])) {
+    stopifnot(file.copy(spec[["licenseFile"]], file.path(stage, "license.txt")))
+    settings$bundle$licenseFile <- file.path(stage_path, "license.txt")
+  }
   settings$productName <- spec$productName
   settings$identifier <- spec$identifier
   settings$version <- spec$version
@@ -606,7 +656,7 @@ build_windows <- function(profile, output = NULL, engine = getwd()) {
       cargo_dir,
       triple,
       output,
-      file.path(spec$app, spec$files)
+      c(file.path(spec$app, spec$files), spec[["icon"]], spec[["licenseFile"]])
     ))
   }
   # Legacy mise builds share the target tree and leave the installer there.

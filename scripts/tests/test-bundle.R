@@ -189,6 +189,7 @@ check_external_build <- function() {
     dir.create(project),
     file.copy("src-tauri/tauri.conf.json", file.path(engine, "src-tauri")),
     file.copy("LICENSE", engine),
+    file.copy("src-tauri/icons/icon.ico", file.path(engine, "test.ico")),
     file.copy("scripts/serve-bundled.R", file.path(engine, "scripts")),
     file.copy("examples/minimal/app.R", project),
     file.copy("bundles/minimal/rproj.lock", project)
@@ -207,8 +208,16 @@ check_external_build <- function() {
   sys.source("scripts/build-windows.R", subject)
   subject$stage_runtime <- function(...) NULL
   subject$stage_packages <- function(...) NULL
+  expect_defaults <- TRUE
   subject$run_tauri <- function(engine, config, triple, target_dir) {
     contents <- jsonlite::read_json(config)
+    if (expect_defaults) {
+      stopifnot(
+        is.null(contents$bundle$publisher),
+        is.null(contents$bundle$icon),
+        is.null(contents$bundle$licenseFile)
+      )
+    }
     win <- contents$app$windows[[1L]]
     stopifnot(
       contents$identifier == "jp.example.sales",
@@ -237,6 +246,60 @@ check_external_build <- function() {
     identical(list.files(output), basename(published)),
     !dir.exists(file.path(project, ".rvenv"))
   )
+  # Branding belongs to the bundle config and can sit outside the Shiny app.
+  branding <- file.path(root, "配布 素材")
+  stopifnot(dir.create(branding))
+  icon <- file.path(branding, "製品.ICO")
+  license <- file.path(branding, "利用規約.txt")
+  stopifnot(file.copy(file.path(engine, "test.ico"), icon))
+  writeLines("利用規約 A", license, useBytes = TRUE)
+  custom <- c(
+    lines,
+    'publisher = "販売 株式会社"',
+    'icon = "../配布 素材/製品.ICO"',
+    'licenseFile = "../配布 素材/利用規約.txt"'
+  )
+  writeLines(custom, profile, useBytes = TRUE)
+  expect_defaults <- FALSE
+  plain_run <- subject$run_tauri
+  subject$run_tauri <- function(engine, config, triple, target_dir) {
+    contents <- jsonlite::read_json(config)
+    bundle <- contents$bundle
+    stopifnot(
+      identical(bundle$publisher, "販売 株式会社"),
+      is.list(bundle$icon),
+      length(bundle$icon) == 1L,
+      identical(bundle$icon[[1L]], bundle$windows$nsis$installerIcon)
+    )
+    resolve <- function(name) file.path(engine, "src-tauri", name)
+    stopifnot(
+      identical(
+        unname(tools::sha256sum(resolve(bundle$icon[[1L]]))),
+        unname(tools::sha256sum(icon))
+      ),
+      identical(
+        readLines(resolve(bundle$licenseFile), encoding = "UTF-8"),
+        "利用規約 A"
+      )
+    )
+    plain_run(engine, config, triple, target_dir)
+  }
+  subject$build_windows(profile, output, engine)
+  writeLines("plain text", file.path(branding, "broken.ico"))
+  writeBin(as.raw(c(0xff, 0xfe, 0x41, 0x00)), file.path(branding, "utf16.txt"))
+  for (bad in list(
+    c('icon = "absent.ico"', "icon"),
+    c('icon = "../配布 素材/broken.ico"', ".ico"),
+    c('licenseFile = "../配布 素材/utf16.txt"', "UTF-8"),
+    c('icon = "../配布 素材/利用規約.txt"', ".ico"),
+    c('licenseFile = "../配布 素材"', "licenseFile"),
+    c('publisher = "  "', "publisher")
+  )) {
+    writeLines(c(lines, bad[1L]), profile)
+    expect_bundle_error(subject$build_windows(profile, output, engine), bad[2L])
+  }
+  writeLines(lines, profile)
+  subject$run_tauri <- plain_run
   # The project itself is a valid output directory. Protect a selected source
   # file if its name matches the actual installer produced by Tauri.
   subject$build_windows(profile, project, engine)
@@ -250,6 +313,15 @@ check_external_build <- function() {
     fixed = TRUE
   )
   writeLines(selected, profile)
+  expect_bundle_error(
+    subject$build_windows(profile, project, engine),
+    "overwrite"
+  )
+  stopifnot(identical(readLines(in_project), "source"))
+  writeLines(
+    c(lines, sprintf('licenseFile = "%s"', basename(in_project))),
+    profile
+  )
   expect_bundle_error(
     subject$build_windows(profile, project, engine),
     "overwrite"
